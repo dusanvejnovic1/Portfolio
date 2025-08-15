@@ -120,6 +120,30 @@ data: {"delta": " the process..."}
 data: {"done": true}
 ```
 
+### GET `/api/diagnostics/openai`
+Test OpenAI connectivity and configuration.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "model": "gpt-4o-mini", 
+  "provider_latency_ms": 1247,
+  "response_received": true
+}
+```
+
+On failure:
+```json
+{
+  "ok": false,
+  "model": "gpt-4o-mini",
+  "provider_latency_ms": 1439,
+  "error": "Connection error.",
+  "code": "config_error"
+}
+```
+
 ### POST `/api/moderate`
 Content moderation endpoint (used internally).
 
@@ -151,6 +175,7 @@ Content moderation endpoint (used internally).
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `60000` |
 | `RATE_LIMIT_MAX` | Max requests per window | `60` |
 | `ALLOWED_ORIGIN` | CORS allowed origin | `*` |
+| `NEXT_PUBLIC_FEATURE_DIAGNOSTICS` | Enable diagnostic features in UI | `false` |
 
 ### Model Selection
 
@@ -178,7 +203,40 @@ The app uses `gpt-4o-mini` by default for cost efficiency. The `QUALITY_MODEL` s
 
 ## Troubleshooting
 
+### Quick Diagnosis
+
+Run the diagnostic script to check OpenAI connectivity:
+```bash
+npm run diag:openai
+```
+
+Or test the diagnostics endpoint directly:
+```bash
+curl http://localhost:3000/api/diagnostics/openai
+```
+
+Expected response when working:
+```json
+{
+  "ok": true,
+  "model": "gpt-4o-mini",
+  "provider_latency_ms": 1247,
+  "response_received": true
+}
+```
+
 ### Common Issues
+
+**Chat always returns provider_error**
+- Check that `OPENAI_API_KEY` is set and valid
+- Verify you have OpenAI API credits remaining
+- Test connectivity with `npm run diag:openai`
+- Check OpenAI service status at https://status.openai.com
+
+**Content incorrectly flagged as inappropriate**
+- This should no longer happen after the fix
+- Check server logs for `moderation_service_error` events
+- If moderation service is down, requests should still proceed
 
 **Rate Limit (429 errors)**
 - Wait 60 seconds and try again
@@ -193,11 +251,6 @@ The app uses `gpt-4o-mini` by default for cost efficiency. The `QUALITY_MODEL` s
 **CORS Errors**
 - Set `ALLOWED_ORIGIN` to your domain in production
 - Check that the API routes are accessible from your frontend
-
-**OpenAI API Errors**
-- Verify your API key is correct and has sufficient credits
-- Check OpenAI service status
-- Review rate limits on your OpenAI account
 
 **Build Errors**
 - Ensure Node.js 18+ is being used

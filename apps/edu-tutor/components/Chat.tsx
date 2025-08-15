@@ -222,6 +222,27 @@ export default function Chat() {
               label="Hints mode"
               disabled={streamingState.isStreaming}
             />
+            {process.env.NEXT_PUBLIC_FEATURE_DIAGNOSTICS === 'true' && (
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/diagnostics/openai')
+                    const result = await response.json()
+                    const message = result.ok 
+                      ? `✅ OpenAI connection successful (${result.provider_latency_ms}ms)`
+                      : `❌ OpenAI connection failed: ${result.error}`
+                    alert(message)
+                  } catch (err) {
+                    console.error('Diagnostic test failed:', err)
+                    alert('❌ Diagnostic test failed')
+                  }
+                }}
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none"
+                disabled={streamingState.isStreaming}
+              >
+                Test OpenAI
+              </button>
+            )}
             {lastUserMessage && !hintsMode && (
               <button
                 onClick={handleShowSolution}
