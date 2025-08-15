@@ -102,6 +102,20 @@ Ensure you:
 
 ## API Endpoints
 
+### GET `/api/health`
+Health check endpoint for monitoring and deployment verification.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "hasKey": true,
+  "defaultModel": "gpt-4o-mini",
+  "env": "production",
+  "timestamp": "2025-08-15T20:57:18.047Z"
+}
+```
+
 ### POST `/api/chat`
 Main chat endpoint with streaming responses.
 
@@ -175,6 +189,49 @@ The app uses `gpt-4o-mini` by default for cost efficiency. The `QUALITY_MODEL` s
 - No conversation persistence
 - Minimal logging (metadata only, no content)
 - Users can export conversations locally
+
+## Code Analysis & Quality Assurance
+
+This project includes automated code analysis to maintain code quality and catch potential issues.
+
+### Running Code Analysis Locally
+
+```bash
+# Run the analysis script
+npm run analyze
+
+# Or run directly from repository root
+node scripts/analyze-code.js
+```
+
+### GitHub Actions Workflow
+
+The repository includes a GitHub Actions workflow that automatically analyzes code and generates reports:
+
+**Triggers:**
+- Manual workflow dispatch (GitHub Actions → "Code Analysis" → "Run workflow")
+- Pull requests to main branch
+
+**What it analyzes:**
+- Health endpoint implementation
+- Moderation retry logic and fallback behavior
+- CORS header implementation
+- Client IP handling robustness
+- SSE header hardening
+- Rate limiter extensibility
+- Input validation with Zod schemas
+
+**Generated Report:**
+- Location: `reports/code-analysis.md`
+- Updated automatically on each analysis run
+- Provides detailed status and recommendations
+
+### Using the Workflow
+
+1. **Manual Run:** Go to GitHub Actions → "Code Analysis" → "Run workflow"
+2. **PR Analysis:** The workflow runs automatically on pull requests
+3. **Check Results:** Review the generated `reports/code-analysis.md` file
+4. **Address Issues:** Fix any FAIL status items and re-run analysis
 
 ## Troubleshooting
 

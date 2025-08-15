@@ -2,14 +2,30 @@ import { NextRequest } from 'next/server'
 import { openai, moderateContent, DEFAULT_MODEL } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
+import { chatRequestSchema } from '@/lib/validation'
 
 // Use Node.js runtime for in-memory rate limiting
 export const runtime = 'nodejs'
 
+function getCORSHeaders() {
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || (process.env.NODE_ENV === 'development' ? '*' : '*')
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: getCORSHeaders()
+  })
+}
+
 function getClientIP(request: NextRequest): string {
   const xForwardedFor = request.headers.get('x-forwarded-for')
   const xRealIP = request.headers.get('x-real-ip')
-  const socketRemoteAddress = request.headers.get('x-forwarded-for')
   
   if (xForwardedFor) {
     return xForwardedFor.split(',')[0].trim()
@@ -17,7 +33,7 @@ function getClientIP(request: NextRequest): string {
   if (xRealIP) {
     return xRealIP
   }
-  return socketRemoteAddress || 'unknown'
+  return 'unknown'
 }
 
 export async function POST(request: NextRequest) {
@@ -46,29 +62,21 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json()
-    const { message, mode = 'hints' } = body
     
-    // Input validation
-    if (!message || typeof message !== 'string') {
+    // Input validation with zod
+    const validationResult = chatRequestSchema.safeParse(body)
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.errors[0]?.message || 'Invalid request format'
       return Response.json(
-        { error: 'Message is required and must be a string' },
-        { status: 400 }
+        { error: errorMessage },
+        { 
+          status: 400,
+          headers: getCORSHeaders()
+        }
       )
     }
     
-    if (message.length > 1500) {
-      return Response.json(
-        { error: 'Message too long. Please limit to 1500 characters.' },
-        { status: 400 }
-      )
-    }
-    
-    if (mode && !['hints', 'solution'].includes(mode)) {
-      return Response.json(
-        { error: 'Mode must be either "hints" or "solution"' },
-        { status: 400 }
-      )
-    }
+    const { message, mode } = validationResult.data
     
     // Content moderation
     const moderationResult = await moderateContent(message)
@@ -169,10 +177,12 @@ export async function POST(request: NextRequest) {
     
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
+        'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
         'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+        ...getCORSHeaders(),
       }
     })
     

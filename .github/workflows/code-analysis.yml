@@ -1,0 +1,64 @@
+name: Code Analysis
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.head_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'apps/edu-tutor/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd apps/edu-tutor
+          npm ci
+
+      - name: Run ESLint (if available)
+        run: |
+          cd apps/edu-tutor
+          if [ -f ".eslintrc.json" ]; then
+            npm run lint || echo "ESLint completed with issues"
+          else
+            echo "No ESLint configuration found"
+          fi
+
+      - name: Run code analysis
+        run: |
+          node scripts/analyze-code.js
+
+      - name: Create reports directory
+        run: mkdir -p reports
+
+      - name: Commit analysis report
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add reports/code-analysis.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update code analysis report [skip ci]"
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              git push origin ${{ github.head_ref }}
+            else
+              git push
+            fi
+          fi
