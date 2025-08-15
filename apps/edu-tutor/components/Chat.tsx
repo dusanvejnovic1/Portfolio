@@ -66,7 +66,21 @@ export default function Chat() {
       
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to get response')
+        const errorMessage = errorData.error || 'Failed to get response'
+        const errorCode = errorData.code || 'unknown_error'
+        
+        // Handle different error types
+        if (errorCode === 'moderated') {
+          // Show the educational safety message for moderated content
+          addMessage(errorMessage, false)
+        } else {
+          // For other errors, show as an error message with code for debugging
+          console.error('Chat API error:', { code: errorCode, message: errorMessage })
+          addMessage(`Error (${errorCode}): ${errorMessage}`, false)
+        }
+        
+        setStreamingState({ isStreaming: false, currentContent: '' })
+        return
       }
       
       const reader = response.body?.getReader()
@@ -95,7 +109,21 @@ export default function Chat() {
               const data = JSON.parse(jsonStr)
               
               if (data.error) {
-                throw new Error(data.error)
+                const errorCode = data.code || 'unknown_error'
+                const errorMessage = data.error
+                
+                // Handle different error types in streaming
+                if (errorCode === 'moderated') {
+                  // Show educational safety message for moderated content
+                  addMessage(errorMessage, false)
+                } else {
+                  // Show error with code for debugging
+                  console.error('Streaming error:', { code: errorCode, message: errorMessage })
+                  addMessage(`Error (${errorCode}): ${errorMessage}`, false)
+                }
+                
+                setStreamingState({ isStreaming: false, currentContent: '' })
+                return
               }
               
               if (data.delta) {
