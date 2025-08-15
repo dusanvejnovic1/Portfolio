@@ -1,0 +1,86 @@
+---
+name: OpenAI Connectivity Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'OpenAI model to test'
+        required: false
+        default: 'gpt-4o-mini'
+        type: string
+
+jobs:
+  openai-diagnostic:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: OpenAI API Connectivity Test
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL: ${{ github.event.inputs.model || 'gpt-4o-mini' }}
+        run: |
+          # Verify API key is available
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "❌ OPENAI_API_KEY secret not found"
+            echo "Please add OPENAI_API_KEY as a repository secret in Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+
+          echo "🔍 Testing OpenAI API connectivity with model: $MODEL"
+
+          # Record start time
+          START_TIME=$(date +%s)
+
+          # Make API request and capture response
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST "https://api.openai.com/v1/chat/completions" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"model\": \"$MODEL\",
+              \"messages\": [
+                {\"role\": \"user\", \"content\": \"Say 'pong'.\"}
+              ],
+              \"max_tokens\": 5
+            }")
+
+          # Extract status code (last line) and response body
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | head -n -1)
+
+          # Calculate latency
+          END_TIME=$(date +%s)
+          LATENCY=$((END_TIME - START_TIME))
+
+          echo "📊 Response status: $HTTP_STATUS"
+          echo "⏱️ Latency: ${LATENCY}s"
+
+          # Check if request was successful (2xx status codes)
+          if [[ "$HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+            # Parse response to verify message content exists
+            MESSAGE_EXISTS=$(echo "$RESPONSE_BODY" | \
+              jq -r '.choices[0].message.content // "null"' 2>/dev/null)
+
+            if [ "$MESSAGE_EXISTS" != "null" ] && [ "$MESSAGE_EXISTS" != "" ]; then
+              echo "✅ event=openai_diagnostic_ok status=$HTTP_STATUS model=$MODEL latency=${LATENCY}s"
+              echo "🎉 OpenAI API connectivity test passed!"
+            else
+              echo "⚠️ API responded with 2xx but message content missing"
+              echo "Response structure may be unexpected"
+              exit 1
+            fi
+          else
+            echo "❌ event=openai_diagnostic_failed status=$HTTP_STATUS model=$MODEL latency=${LATENCY}s"
+
+            # Try to extract error message without exposing sensitive data
+            ERROR_TYPE=$(echo "$RESPONSE_BODY" | \
+              jq -r '.error.type // "unknown"' 2>/dev/null)
+            ERROR_CODE=$(echo "$RESPONSE_BODY" | \
+              jq -r '.error.code // "unknown"' 2>/dev/null)
+
+            echo "Error type: $ERROR_TYPE"
+            echo "Error code: $ERROR_CODE"
+            echo "Please check your OPENAI_API_KEY and OpenAI account status"
+            exit 1
+          fi

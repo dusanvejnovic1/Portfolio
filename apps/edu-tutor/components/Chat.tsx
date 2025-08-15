@@ -110,7 +110,21 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
       
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to get response')
+        const errorMessage = errorData.error || 'Failed to get response'
+        const errorCode = errorData.code || 'unknown_error'
+        
+        // Handle different error types
+        if (errorCode === 'moderated') {
+          // Show the educational safety message for moderated content
+          addMessage(errorMessage, false)
+        } else {
+          // For other errors, show as an error message with code for debugging
+          console.error('Chat API error:', { code: errorCode, message: errorMessage })
+          addMessage(`Error (${errorCode}): ${errorMessage}`, false)
+        }
+        
+        setStreamingState({ isStreaming: false, currentContent: '' })
+        return
       }
       
       const reader = response.body?.getReader()
@@ -139,7 +153,21 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
               const data = JSON.parse(jsonStr)
               
               if (data.error) {
-                throw new Error(data.error)
+                const errorCode = data.code || 'unknown_error'
+                const errorMessage = data.error
+                
+                // Handle different error types in streaming
+                if (errorCode === 'moderated') {
+                  // Show educational safety message for moderated content
+                  addMessage(errorMessage, false)
+                } else {
+                  // Show error with code for debugging
+                  console.error('Streaming error:', { code: errorCode, message: errorMessage })
+                  addMessage(`Error (${errorCode}): ${errorMessage}`, false)
+                }
+                
+                setStreamingState({ isStreaming: false, currentContent: '' })
+                return
               }
               
               if (data.delta) {
@@ -235,6 +263,27 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
               label="Hints mode"
               disabled={streamingState.isStreaming}
             />
+            {process.env.NEXT_PUBLIC_FEATURE_DIAGNOSTICS === 'true' && (
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/diagnostics/openai')
+                    const result = await response.json()
+                    const message = result.ok 
+                      ? `✅ OpenAI connection successful (${result.provider_latency_ms}ms)`
+                      : `❌ OpenAI connection failed: ${result.error}`
+                    alert(message)
+                  } catch (err) {
+                    console.error('Diagnostic test failed:', err)
+                    alert('❌ Diagnostic test failed')
+                  }
+                }}
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none"
+                disabled={streamingState.isStreaming}
+              >
+                Test OpenAI
+              </button>
+            )}
             {lastUserMessage && !hintsMode && (
               <button
                 onClick={handleShowSolution}

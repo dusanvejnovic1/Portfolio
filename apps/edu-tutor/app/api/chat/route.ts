@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { openai, moderateContent, DEFAULT_MODEL } from '@/lib/openai'
+import { openai, moderateContent, DEFAULT_MODEL, validateEnvironment } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -25,19 +25,39 @@ export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID()
   
   try {
+    // Validate environment at request time
+    const envValidation = validateEnvironment()
+    if (!envValidation.ok) {
+      console.log('Chat request failed - environment validation', {
+        event: 'chat_env_error',
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+        error: envValidation.error
+      })
+      
+      return Response.json({
+        error: 'Service configuration error. Please contact support.',
+        code: 'config_error'
+      }, { status: 500 })
+    }
+    
     // Rate limiting check
     const clientIP = getClientIP(request)
     const rateLimitResult = checkRateLimit(clientIP)
     
     if (!rateLimitResult.allowed) {
       console.log(`Rate limit exceeded for IP: ${clientIP}`, {
+        event: 'rate_limit_exceeded',
         request_id: requestId,
         timestamp: new Date().toISOString(),
         ip: clientIP,
       })
       
       return Response.json(
-        { error: RATE_LIMIT_MESSAGE },
+        { 
+          error: RATE_LIMIT_MESSAGE,
+          code: 'rate_limited'
+        },
         { 
           status: 429,
           headers: { 'X-RateLimit-Remaining': '0' }
@@ -51,21 +71,30 @@ export async function POST(request: NextRequest) {
     // Input validation
     if (!message || typeof message !== 'string') {
       return Response.json(
-        { error: 'Message is required and must be a string' },
+        { 
+          error: 'Message is required and must be a string',
+          code: 'invalid_input'
+        },
         { status: 400 }
       )
     }
     
     if (message.length > 1500) {
       return Response.json(
-        { error: 'Message too long. Please limit to 1500 characters.' },
+        { 
+          error: 'Message too long. Please limit to 1500 characters.',
+          code: 'message_too_long'
+        },
         { status: 400 }
       )
     }
     
     if (mode && !['hints', 'solution'].includes(mode)) {
       return Response.json(
-        { error: 'Mode must be either "hints" or "solution"' },
+        { 
+          error: 'Mode must be either "hints" or "solution"',
+          code: 'invalid_mode'
+        },
         { status: 400 }
       )
     }
@@ -73,15 +102,28 @@ export async function POST(request: NextRequest) {
     // Content moderation
     const moderationResult = await moderateContent(message)
     
-    if (moderationResult.flagged) {
+    // Check for moderation service errors
+    if ('service_error' in moderationResult && moderationResult.service_error) {
+      console.log('Content moderation service error, allowing request to proceed', {
+        event: 'moderation_service_error',
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+        ip: clientIP,
+      })
+      // Continue with request despite moderation service failure
+    } else if (moderationResult.flagged) {
       console.log(`Content flagged for IP: ${clientIP}`, {
+        event: 'content_moderated',
         request_id: requestId,
         timestamp: new Date().toISOString(),
         ip: clientIP,
         categories: moderationResult.categories,
       })
       
-      return Response.json({ error: MODERATION_REFUSAL_MESSAGE }, { status: 400 })
+      return Response.json({ 
+        error: MODERATION_REFUSAL_MESSAGE,
+        code: 'moderated'
+      }, { status: 400 })
     }
     
     // Prepare system prompt based on mode
@@ -132,6 +174,16 @@ export async function POST(request: NextRequest) {
             }
           }
           
+          // Log successful OpenAI response
+          console.log('OpenAI response received successfully', {
+            event: 'openai_response_received',
+            request_id: requestId,
+            timestamp: new Date().toISOString(),
+            ip: clientIP,
+            model,
+            mode
+          })
+          
           clearInterval(keepAliveInterval)
           
           // Send final completion message
@@ -152,13 +204,32 @@ export async function POST(request: NextRequest) {
           
         } catch (error) {
           console.error('Streaming error:', error, {
+            event: 'openai_provider_error',
             request_id: requestId,
             timestamp: new Date().toISOString(),
             ip: clientIP,
           })
           
+          // Determine error type and provide structured response
+          let errorMessage = 'Sorry, I encountered an error while processing your request. Please try again.'
+          let errorCode = 'provider_error'
+          
+          if (error instanceof Error) {
+            if (error.message.includes('API key')) {
+              errorCode = 'config_error'
+              errorMessage = 'Service configuration error. Please contact support.'
+            } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+              errorCode = 'rate_limited'
+              errorMessage = 'OpenAI rate limit reached. Please try again in a moment.'
+            } else if (error.message.includes('model')) {
+              errorCode = 'config_error'
+              errorMessage = 'Model configuration error. Please contact support.'
+            }
+          }
+          
           const errorData = JSON.stringify({ 
-            error: 'Sorry, I encountered an error while processing your request. Please try again.' 
+            error: errorMessage,
+            code: errorCode
           })
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
         } finally {
@@ -178,12 +249,16 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('Chat API error:', error, {
+      event: 'chat_api_error',
       request_id: requestId,
       timestamp: new Date().toISOString(),
     })
     
     return Response.json(
-      { error: 'Internal server error. Please try again later.' },
+      { 
+        error: 'Internal server error. Please try again later.',
+        code: 'server_error'
+      },
       { status: 500 }
     )
   }
