@@ -1,0 +1,24 @@
+# Node / Next.js basics
+node_modules/
+.next/
+out/
+dist/
+.env
+.env.local
+.DS_Store
+
+# Additional build artifacts
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vercel
+.vercel
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
