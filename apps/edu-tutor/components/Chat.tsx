@@ -2,11 +2,13 @@
 
 import { useState, useRef, useCallback } from 'react'
 import Toggle from './Toggle'
+import ImageUpload from './ImageUpload'
 
 interface ChatMessage {
   content: string
   isUser: boolean
   timestamp: Date
+  hasImage?: boolean
 }
 
 interface StreamingState {
@@ -23,6 +25,7 @@ export default function Chat() {
     currentContent: ''
   })
   const [lastUserMessage, setLastUserMessage] = useState('')
+  const [currentImage, setCurrentImage] = useState<File | null>(null)
   
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -32,21 +35,25 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
   
-  const addMessage = useCallback((content: string, isUser: boolean) => {
-    setMessages(prev => [...prev, { content, isUser, timestamp: new Date() }])
+  const addMessage = useCallback((content: string, isUser: boolean, hasImage: boolean = false) => {
+    setMessages(prev => [...prev, { content, isUser, timestamp: new Date(), hasImage }])
     setTimeout(scrollToBottom, 100)
   }, [scrollToBottom])
   
-  const handleSubmit = useCallback(async (message: string, mode: 'hints' | 'solution') => {
-    if (!message.trim() || streamingState.isStreaming) return
+  const handleSubmit = useCallback(async (message: string, mode: 'hints' | 'solution', image?: File) => {
+    if ((!message.trim() && !image) || streamingState.isStreaming) return
     
     // Add user message
-    addMessage(message, true)
+    const messageText = image 
+      ? (message.trim() ? `${message} [Image uploaded]` : '[Image uploaded]')
+      : message
+    addMessage(messageText, true, !!image)
     setLastUserMessage(message)
     
-    // Clear input if it's a new message (not "Show Solution")
+    // Clear input and image if it's a new message (not "Show Solution")
     if (mode === 'hints' || message !== lastUserMessage) {
       setInputValue('')
+      setCurrentImage(null)
     }
     
     // Start streaming
@@ -55,14 +62,33 @@ export default function Chat() {
     try {
       abortControllerRef.current = new AbortController()
       
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message, mode }),
-        signal: abortControllerRef.current.signal
-      })
+      let response: Response
+      
+      if (image) {
+        // Use vision API for image analysis
+        const formData = new FormData()
+        if (message.trim()) {
+          formData.append('prompt', message)
+        }
+        formData.append('mode', mode)
+        formData.append('image', image)
+        
+        response = await fetch('/api/vision', {
+          method: 'POST',
+          body: formData,
+          signal: abortControllerRef.current.signal
+        })
+      } else {
+        // Use regular chat API for text-only
+        response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ message, mode }),
+          signal: abortControllerRef.current.signal
+        })
+      }
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -133,14 +159,14 @@ export default function Chat() {
   
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (inputValue.trim()) {
-      handleSubmit(inputValue.trim(), hintsMode ? 'hints' : 'solution')
+    if (inputValue.trim() || currentImage) {
+      handleSubmit(inputValue.trim(), hintsMode ? 'hints' : 'solution', currentImage || undefined)
     }
   }
   
   const handleShowSolution = () => {
     if (lastUserMessage && !streamingState.isStreaming) {
-      handleSubmit(lastUserMessage, 'solution')
+      handleSubmit(lastUserMessage, 'solution', currentImage || undefined)
     }
   }
   
@@ -211,9 +237,13 @@ export default function Chat() {
           {messages.length === 0 && !streamingState.isStreaming && (
             <div className="text-center text-gray-500 dark:text-gray-400 py-8">
               <p className="text-lg mb-2">Welcome to your AI tutor!</p>
-              <p className="text-sm">
-                Ask any educational question. Toggle &quot;Hints mode&quot; to get guidance instead of direct answers.
+              <p className="text-sm mb-4">
+                Ask any educational question or upload an image for analysis. 
+                Toggle &quot;Hints mode&quot; to get guidance instead of direct answers.
               </p>
+              <div className="text-xs text-gray-400 dark:text-gray-500">
+                Supports JPEG and PNG images up to 500MB
+              </div>
             </div>
           )}
           
@@ -281,10 +311,22 @@ export default function Chat() {
             </div>
           </div>
           
+          {/* Image Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Upload Image (Optional)
+            </label>
+            <ImageUpload
+              currentImage={currentImage}
+              onImageChange={setCurrentImage}
+              disabled={streamingState.isStreaming}
+            />
+          </div>
+          
           <div className="flex flex-wrap gap-2 justify-between">
             <button
               type="submit"
-              disabled={!inputValue.trim() || streamingState.isStreaming}
+              disabled={(!inputValue.trim() && !currentImage) || streamingState.isStreaming}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               {streamingState.isStreaming ? 'Processing...' : 'Send'}
