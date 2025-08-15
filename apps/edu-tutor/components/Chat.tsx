@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import Toggle from './Toggle'
 import ImageUpload from './ImageUpload'
+import EmptyState from './EmptyState'
+import { TypingIndicator } from './SkeletonLoader'
 
 interface ChatMessage {
   content: string
@@ -16,10 +18,15 @@ interface StreamingState {
   currentContent: string
 }
 
-export default function Chat() {
+interface ChatProps {
+  hintsMode?: boolean
+  onHintsModeChange?: (mode: boolean) => void
+}
+
+export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChange }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
-  const [hintsMode, setHintsMode] = useState(true)
+  const [hintsMode, setHintsMode] = useState(propHintsMode)
   const [streamingState, setStreamingState] = useState<StreamingState>({
     isStreaming: false,
     currentContent: ''
@@ -30,6 +37,17 @@ export default function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  
+  // Sync with prop changes
+  React.useEffect(() => {
+    setHintsMode(propHintsMode)
+  }, [propHintsMode])
+  
+  // Notify parent of hints mode changes
+  const handleHintsModeChange = (mode: boolean) => {
+    setHintsMode(mode)
+    onHintsModeChange?.(mode)
+  }
   
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -206,17 +224,14 @@ export default function Chat() {
   }
   
   return (
-    <div className="max-w-4xl mx-auto p-4 h-screen flex flex-col">
-      <div className="flex-1 overflow-hidden flex flex-col">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
+      <div className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full">
         {/* Header */}
-        <div className="mb-4 pb-4 border-b">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            Educational Tutor
-          </h1>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <div className="flex flex-wrap items-center gap-4">
             <Toggle
               checked={hintsMode}
-              onChange={setHintsMode}
+              onChange={handleHintsModeChange}
               label="Hints mode"
               disabled={streamingState.isStreaming}
             />
@@ -233,125 +248,136 @@ export default function Chat() {
         </div>
         
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto mb-4 space-y-4">
-          {messages.length === 0 && !streamingState.isStreaming && (
-            <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-              <p className="text-lg mb-2">Welcome to your AI tutor!</p>
-              <p className="text-sm mb-4">
-                Ask any educational question or upload an image for analysis. 
-                Toggle &quot;Hints mode&quot; to get guidance instead of direct answers.
-              </p>
-              <div className="text-xs text-gray-400 dark:text-gray-500">
-                Supports JPEG and PNG images up to 500MB
-              </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {messages.length === 0 && !streamingState.isStreaming ? (
+            <EmptyState />
+          ) : (
+            <div className="space-y-4 max-w-4xl mx-auto">
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`
+                      max-w-[85%] p-4 rounded-lg whitespace-pre-wrap
+                      ${message.isUser
+                        ? 'bg-blue-600 text-white ml-4'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 mr-4'
+                      }
+                    `}
+                  >
+                    {message.content}
+                    {message.hasImage && (
+                      <div className="mt-2 text-xs opacity-75">
+                        📎 Image attached
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              
+              {/* Streaming message */}
+              {streamingState.isStreaming && (
+                <div className="flex justify-start">
+                  <div 
+                    className="max-w-[85%] p-4 rounded-lg whitespace-pre-wrap bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 mr-4"
+                    aria-live="polite"
+                    aria-label="AI response streaming"
+                  >
+                    {streamingState.currentContent || <TypingIndicator />}
+                    {streamingState.currentContent && (
+                      <span className="inline-block w-2 h-5 bg-gray-400 ml-1 animate-pulse" aria-hidden="true">|</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-          
-          {messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`
-                  max-w-[80%] p-3 rounded-lg whitespace-pre-wrap
-                  ${message.isUser
-                    ? 'bg-blue-600 text-white ml-4'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 mr-4'
-                  }
-                `}
-              >
-                {message.content}
-              </div>
-            </div>
-          ))}
-          
-          {/* Streaming message */}
-          {streamingState.isStreaming && (
-            <div className="flex justify-start">
-              <div 
-                className="max-w-[80%] p-3 rounded-lg whitespace-pre-wrap bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 mr-4"
-                aria-live="polite"
-                aria-label="AI response streaming"
-              >
-                {streamingState.currentContent}
-                <span className="inline-block w-2 h-5 bg-gray-400 ml-1 animate-pulse" aria-hidden="true">|</span>
-              </div>
-            </div>
-          )}
-          
           <div ref={messagesEndRef} />
         </div>
         
         {/* Status line */}
-        <div className="text-sm text-gray-500 dark:text-gray-400 mb-2 min-h-[1.25rem]">
-          {streamingState.isStreaming ? 'Streaming...' : messages.length > 0 ? 'Done' : ''}
+        <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+          {streamingState.isStreaming ? 'AI is analyzing...' : messages.length > 0 ? 'Ready for your next question' : 'Ready to help with your studies'}
         </div>
         
         {/* Input form */}
-        <form onSubmit={handleFormSubmit} className="space-y-3">
-          <div>
-            <label htmlFor="question-input" className="sr-only">
-              Ask your educational question
-            </label>
-            <textarea
-              ref={textareaRef}
-              id="question-input"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask your educational question here... (Press Enter to send, Shift+Enter for new line)"
-              disabled={streamingState.isStreaming}
-              rows={3}
-              maxLength={1500}
-              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
-            />
-            <div className="text-xs text-gray-500 mt-1">
-              {inputValue.length}/1500 characters
-            </div>
-          </div>
-          
-          {/* Image Upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Upload Image (Optional)
-            </label>
-            <ImageUpload
-              currentImage={currentImage}
-              onImageChange={setCurrentImage}
-              disabled={streamingState.isStreaming}
-            />
-          </div>
-          
-          <div className="flex flex-wrap gap-2 justify-between">
-            <button
-              type="submit"
-              disabled={(!inputValue.trim() && !currentImage) || streamingState.isStreaming}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              {streamingState.isStreaming ? 'Processing...' : 'Send'}
-            </button>
-            
-            {messages.length > 0 && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={copySession}
-                  className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-                >
-                  Copy Session
-                </button>
-                <button
-                  type="button"
-                  onClick={exportSession}
-                  className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-                >
-                  Export Session
-                </button>
+        <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+          <form onSubmit={handleFormSubmit} className="space-y-3">
+            <div>
+              <label htmlFor="question-input" className="sr-only">
+                Ask your educational question
+              </label>
+              <textarea
+                ref={textareaRef}
+                id="question-input"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask your educational question here... (Press Enter to send, Shift+Enter for new line)"
+                disabled={streamingState.isStreaming}
+                rows={3}
+                maxLength={1500}
+                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              />
+              <div className="text-xs text-gray-500 mt-1">
+                {inputValue.length}/1500 characters
               </div>
-            )}
-          </div>
-        </form>
+            </div>
+            
+            {/* Image Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Upload Image (Optional)
+              </label>
+              <ImageUpload
+                currentImage={currentImage}
+                onImageChange={setCurrentImage}
+                disabled={streamingState.isStreaming}
+              />
+            </div>
+            
+            <div className="flex flex-wrap gap-2 justify-between items-center">
+              <button
+                type="submit"
+                disabled={(!inputValue.trim() && !currentImage) || streamingState.isStreaming}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center gap-2"
+              >
+                {streamingState.isStreaming ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Processing...
+                  </>
+                ) : (
+                  'Send'
+                )}
+              </button>
+              
+              {messages.length > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={copySession}
+                    className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                  >
+                    Copy Session
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exportSession}
+                    className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                  >
+                    Export Session
+                  </button>
+                </div>
+              )}
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   )
