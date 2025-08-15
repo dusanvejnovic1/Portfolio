@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { openai, moderateContent, DEFAULT_MODEL, QUALITY_MODEL } from '@/lib/openai'
+import { openai, moderateContent, DEFAULT_MODEL } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
           const keepAliveInterval = setInterval(() => {
             try {
               controller.enqueue(encoder.encode(': keepalive\n\n'))
-            } catch (e) {
+            } catch {
               clearInterval(keepAliveInterval)
             }
           }, 30000) // Every 30 seconds

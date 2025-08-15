@@ -118,20 +118,20 @@ export default function Chat() {
           }
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Chat error:', error)
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         setStreamingState({ isStreaming: false, currentContent: '' })
         return
       }
       
-      const errorMessage = error.message || 'Sorry, I encountered an error. Please try again.'
+      const errorMessage = error instanceof Error ? error.message : 'Sorry, I encountered an error. Please try again.'
       addMessage(`Error: ${errorMessage}`, false)
       setStreamingState({ isStreaming: false, currentContent: '' })
     }
   }, [streamingState.isStreaming, addMessage, lastUserMessage])
   
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (inputValue.trim()) {
       handleSubmit(inputValue.trim(), hintsMode ? 'hints' : 'solution')
@@ -147,7 +147,7 @@ export default function Chat() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleFormSubmit(e as any)
+      handleFormSubmit(e as unknown as React.FormEvent<HTMLFormElement>)
     }
   }
   

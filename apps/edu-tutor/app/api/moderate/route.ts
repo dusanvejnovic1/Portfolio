@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { openai, moderateContent } from '@/lib/openai'
+import { moderateContent } from '@/lib/openai'
 
 // Use Node.js runtime for in-memory rate limiting
 export const runtime = 'nodejs'
