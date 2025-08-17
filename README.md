@@ -34,6 +34,7 @@ That PR established the MVP’s educational focus, streaming UX, moderation and 
 Models used: 
 
 GPT 4.1 - general
+
 GPT 5 - prompt generation and pull requests
 
 You can access a cloud stored version of this app on : https://portfolio-sepia-xi-98.vercel.app/ .
