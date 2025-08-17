@@ -1,6 +1,44 @@
-# Portfolio
+# Portfolio AI
 
-This is my personal portfolio repository.
+This is an app made entirely using copilot and copilot AI agent pull requests. Made as a practice for interacting with these tools, evaluation what they can and cant do, their general competence and eventual integration into a more complex fully copilot built app.
+
+Original prompt :
+
+Purpose: Add a complete educational tutoring MVP under apps/edu-tutor providing AI-powered, hints-first learning.
+
+Key features:
+
+Hints-first vs Solution mode
+Real-time streaming responses (SSE)
+Content moderation (omni-moderation-latest)
+Rate limiting (60 requests/min/IP)
+No data persistence; privacy-focused
+Accessible, responsive UI with dark/light mode and session export
+Tech/architecture:
+
+Next.js 14 (App Router), TypeScript, Tailwind CSS
+OpenAI integration with gpt-4o-mini default (gpt-4o ready)
+
+API routes: /api/chat (streaming), /api/moderate
+Cost controls:
+
+Input capped at 1,500 characters
+Responses limited to ~800 tokens
+Cost-effective default model (gpt-4o-mini)
+Deployment:
+
+Vercel-optimized, .env.example provided, comprehensive README
+Isolated under apps/edu-tutor with clean file structure
+That PR established the MVP’s educational focus, streaming UX, moderation and rate-limiting safeguards, and the initial model defaults.
+
+Models used: 
+
+GPT 4.1 - general
+GPT 5 - prompt generation and pull requests
+
+You can access a cloud stored version of this app on : https://portfolio-sepia-xi-98.vercel.app/ .
+
+Everything beyond this point is fully AI generated.
 
 ## Educational Tutor Sub-App
 
