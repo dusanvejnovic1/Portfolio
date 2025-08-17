@@ -9,11 +9,17 @@ Purpose: Add a complete educational tutoring MVP under apps/edu-tutor providing 
 Key features:
 
 Hints-first vs Solution mode
+
 Real-time streaming responses (SSE)
+
 Content moderation (omni-moderation-latest)
+
 Rate limiting (60 requests/min/IP)
+
 No data persistence; privacy-focused
+
 Accessible, responsive UI with dark/light mode and session export
+
 Tech/architecture:
 
 Next.js 14 (App Router), TypeScript, Tailwind CSS
