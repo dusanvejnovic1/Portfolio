@@ -5,6 +5,8 @@ An AI-powered educational assistant that provides hints-first learning experienc
 ## Features
 
 - **Hints-First Learning**: Toggle between hints mode (1-2 guiding hints) and solution mode (complete explanations)
+- **Model Selection**: Support for both GPT-4 and GPT-5 models with automatic API routing
+- **Reasoning Controls**: Advanced reasoning options for GPT-5 models (low, medium, high effort)
 - **Real-time Streaming**: Server-Sent Events (SSE) for smooth, real-time response streaming
 - **Content Moderation**: Automatic screening of user input using OpenAI's moderation API
 - **Rate Limiting**: Fair usage enforcement (60 requests/minute/IP)
@@ -12,12 +14,59 @@ An AI-powered educational assistant that provides hints-first learning experienc
 - **Session Export**: Copy or download conversation history locally
 - **No Data Storage**: Privacy-focused design with no conversation persistence
 
+## Model Routing
+
+The application supports both GPT-4 and GPT-5 model families with automatic API routing:
+
+### Supported Models
+- **gpt-4o-mini**: Fast, cost-effective model (Default)
+- **gpt-4o**: Higher quality GPT-4 model
+- **gpt-5-mini**: Next-generation reasoning model (Preview)
+- **gpt-5**: Advanced reasoning and analysis (Preview)
+
+### API Routing Logic
+The app automatically routes requests to the appropriate OpenAI API based on the selected model:
+
+- **GPT-4 family** (`gpt-4o-mini`, `gpt-4o`): Uses Chat Completions API (`/v1/chat/completions`)
+- **GPT-5 family** (`gpt-5-mini`, `gpt-5`): Uses Responses API (`/v1/responses`) *(Currently fallback to Chat Completions)*
+
+### Reasoning Controls
+When GPT-5 models are selected, additional reasoning controls become available:
+- **Low**: Basic reasoning for simple questions
+- **Medium**: Balanced reasoning for most tasks (Default)  
+- **High**: Deep reasoning for complex problems
+
+### Usage Examples
+
+#### Using Chat API with model selection:
+```bash
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Explain quantum computing",
+    "mode": "hints",
+    "model": "gpt-4o-mini"
+  }'
+```
+
+#### Using GPT-5 with reasoning:
+```bash
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Solve this complex math problem",
+    "mode": "solution", 
+    "model": "gpt-5-mini",
+    "reasoning": {"effort": "high"}
+  }'
+```
+
 ## Tech Stack
 
 - **Framework**: Next.js 14 (App Router) with TypeScript
 - **Styling**: Tailwind CSS with dark/light mode support
 - **Backend**: Next.js API Routes (Node.js runtime)
-- **AI**: OpenAI API (gpt-4o-mini default, gpt-4o optional)
+- **AI**: OpenAI API with model routing (GPT-4 and GPT-5 support)
 - **Hosting**: Vercel-ready configuration
 
 ## Getting Started
@@ -172,6 +221,7 @@ Content moderation endpoint (used internally).
 | `OPENAI_API_KEY` | OpenAI API key (required) | - |
 | `DEFAULT_MODEL` | Primary model for responses | `gpt-4o-mini` |
 | `QUALITY_MODEL` | High-quality model option | `gpt-4o` |
+| `VISION_MODEL` | Model for image analysis | `gpt-4o` |
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `60000` |
 | `RATE_LIMIT_MAX` | Max requests per window | `60` |
 | `ALLOWED_ORIGIN` | CORS allowed origin | `*` |
@@ -179,7 +229,19 @@ Content moderation endpoint (used internally).
 
 ### Model Selection
 
-The app uses `gpt-4o-mini` by default for cost efficiency. The `QUALITY_MODEL` setting is prepared for future features that may require higher-quality responses.
+The app supports multiple AI models with automatic API routing:
+
+**Available Models:**
+- `gpt-4o-mini` - Fast, cost-effective (Default)
+- `gpt-4o` - Higher quality GPT-4  
+- `gpt-5-mini` - Next-gen reasoning (Preview)
+- `gpt-5` - Advanced reasoning (Preview)
+
+**Model Routing:**
+- GPT-4 models use Chat Completions API
+- GPT-5 models use Responses API (with reasoning support)
+- Users can select models via the UI dropdown
+- Default model can be set via `DEFAULT_MODEL` environment variable
 
 ## Cost and Safety Notes
 
@@ -215,12 +277,30 @@ Or test the diagnostics endpoint directly:
 curl http://localhost:3000/api/diagnostics/openai
 ```
 
+You can also test specific models:
+```bash
+MODEL=gpt-4o node scripts/openai-diagnostic.mjs
+MODEL=gpt-5-mini node scripts/openai-diagnostic.mjs
+```
+
 Expected response when working:
 ```json
 {
   "ok": true,
   "model": "gpt-4o-mini",
+  "endpoint": "chat.completions",
   "provider_latency_ms": 1247,
+  "response_received": true
+}
+```
+
+For GPT-5 models (currently using fallback):
+```json
+{
+  "ok": true,
+  "model": "gpt-5-mini", 
+  "endpoint": "responses (fallback to chat.completions)",
+  "provider_latency_ms": 1350,
   "response_received": true
 }
 ```
