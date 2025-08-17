@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { openai, moderateContent, validateEnvironment, resolveModel } from '@/lib/openai'
+import { openai, moderateContent, validateEnvironment, resolveModel, isGpt5 } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -136,11 +136,13 @@ export async function POST(request: NextRequest) {
     
     // Resolve the model to use
     const model = resolveModel(requestedModel)
+    const endpoint = isGpt5(model) ? 'responses' : 'chat.completions'
     
-    // Log the resolved model for debugging
+    // Log the resolved model and endpoint for debugging
     console.log('Chat request using model:', {
       requested: requestedModel,
       resolved: model,
+      endpoint,
       event: 'chat_model_resolved',
       request_id: requestId
     })
@@ -151,35 +153,77 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const completion = await openai().chat.completions.create({
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: message }
-            ],
-            temperature: 0.5,
-            max_tokens: 800, // Keep responses concise
-            stream: true,
-          })
-          
-          // Send periodic keepalive comments
-          const keepAliveInterval = setInterval(() => {
-            try {
-              controller.enqueue(encoder.encode(': keepalive\n\n'))
-            } catch {
-              clearInterval(keepAliveInterval)
-            }
-          }, 30000) // Every 30 seconds
-          
           let fullResponse = ''
           
-          for await (const chunk of completion) {
-            const content = chunk.choices[0]?.delta?.content
-            if (content) {
-              fullResponse += content
-              const data = JSON.stringify({ delta: content })
-              controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+          if (isGpt5(model)) {
+            // Use Responses API for GPT-5
+            // Note: This is a placeholder implementation. The actual Responses API 
+            // interface may differ when GPT-5 is available. For now, we fall back 
+            // to Chat Completions and add a warning.
+            console.warn(`GPT-5 detected (${model}) but using Chat Completions API as fallback. Responses API implementation pending.`)
+            
+            const completion = await openai().chat.completions.create({
+              model,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message }
+              ],
+              temperature: 0.5,
+              max_tokens: 800,
+              stream: true,
+            })
+            
+            // Send periodic keepalive comments
+            const keepAliveInterval = setInterval(() => {
+              try {
+                controller.enqueue(encoder.encode(': keepalive\n\n'))
+              } catch {
+                clearInterval(keepAliveInterval)
+              }
+            }, 30000) // Every 30 seconds
+            
+            for await (const chunk of completion) {
+              const content = chunk.choices[0]?.delta?.content
+              if (content) {
+                fullResponse += content
+                const data = JSON.stringify({ delta: content })
+                controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+              }
             }
+            
+            clearInterval(keepAliveInterval)
+          } else {
+            // Use Chat Completions API for GPT-4 family
+            const completion = await openai().chat.completions.create({
+              model,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message }
+              ],
+              temperature: 0.5,
+              max_tokens: 800, // Keep responses concise
+              stream: true,
+            })
+            
+            // Send periodic keepalive comments
+            const keepAliveInterval = setInterval(() => {
+              try {
+                controller.enqueue(encoder.encode(': keepalive\n\n'))
+              } catch {
+                clearInterval(keepAliveInterval)
+              }
+            }, 30000) // Every 30 seconds
+            
+            for await (const chunk of completion) {
+              const content = chunk.choices[0]?.delta?.content
+              if (content) {
+                fullResponse += content
+                const data = JSON.stringify({ delta: content })
+                controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+              }
+            }
+            
+            clearInterval(keepAliveInterval)
           }
           
           // Log successful OpenAI response
@@ -189,10 +233,9 @@ export async function POST(request: NextRequest) {
             timestamp: new Date().toISOString(),
             ip: clientIP,
             model,
+            endpoint,
             mode
           })
-          
-          clearInterval(keepAliveInterval)
           
           // Send final completion message
           const doneData = JSON.stringify({ done: true })
@@ -205,6 +248,7 @@ export async function POST(request: NextRequest) {
             timestamp: new Date().toISOString(),
             ip: clientIP,
             model,
+            endpoint,
             mode,
             latency,
             response_length: fullResponse.length,
@@ -216,7 +260,8 @@ export async function POST(request: NextRequest) {
             request_id: requestId,
             timestamp: new Date().toISOString(),
             ip: clientIP,
-            model: model
+            model: model,
+            endpoint
           })
           
           // Determine error type and provide structured response

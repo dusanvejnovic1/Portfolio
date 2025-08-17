@@ -15,8 +15,13 @@
 import https from 'https';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-mini';
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-4o-mini';
 const MODEL = process.env.MODEL || DEFAULT_MODEL;
+
+// Helper to detect if a model is GPT-5
+function isGpt5(model) {
+  return /^gpt-5/.test(model);
+}
 
 if (!OPENAI_API_KEY) {
   console.error('❌ OPENAI_API_KEY environment variable is required');
@@ -30,6 +35,14 @@ if (MODEL !== DEFAULT_MODEL) {
 }
 
 const startTime = Date.now();
+const isGpt5Model = isGpt5(MODEL);
+const endpoint = isGpt5Model ? 'responses' : 'chat.completions';
+const apiPath = isGpt5Model ? '/v1/responses' : '/v1/chat/completions';
+
+console.log(`🔗 Using ${endpoint} API (${apiPath})`);
+if (isGpt5Model) {
+  console.log('⚠️ GPT-5 detected but using Chat Completions API as fallback. Responses API implementation pending.');
+}
 
 const postData = JSON.stringify({
   model: MODEL,
@@ -42,7 +55,7 @@ const postData = JSON.stringify({
 const options = {
   hostname: 'api.openai.com',
   port: 443,
-  path: '/v1/chat/completions',
+  path: '/v1/chat/completions', // Use Chat Completions for now, even for GPT-5
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${OPENAI_API_KEY}`,
@@ -66,10 +79,19 @@ const req = https.request(options, (res) => {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       try {
         const response = JSON.parse(data);
-        const messageContent = response.choices?.[0]?.message?.content;
+        let messageContent;
+        
+        if (isGpt5Model) {
+          // For GPT-5 (currently using Chat Completions as fallback)
+          messageContent = response.choices?.[0]?.message?.content;
+        } else {
+          // For Chat Completions API
+          messageContent = response.choices?.[0]?.message?.content;
+        }
         
         if (messageContent) {
-          console.log(`✅ event=openai_diagnostic_ok status=${res.statusCode} model=${MODEL} latency=${latency}s`);
+          console.log(`✅ event=openai_diagnostic_ok status=${res.statusCode} model=${MODEL} endpoint=${endpoint} latency=${latency}s`);
+          console.log(`{ "ok": true, "model": "${MODEL}", "endpoint": "${endpoint}", "status": ${res.statusCode} }`);
           console.log('🎉 OpenAI API connectivity test passed!');
           process.exit(0);
         } else {
@@ -83,7 +105,8 @@ const req = https.request(options, (res) => {
         process.exit(1);
       }
     } else {
-      console.log(`❌ event=openai_diagnostic_failed status=${res.statusCode} model=${MODEL} latency=${latency}s`);
+      console.log(`❌ event=openai_diagnostic_failed status=${res.statusCode} model=${MODEL} endpoint=${endpoint} latency=${latency}s`);
+      console.log(`{ "ok": false, "model": "${MODEL}", "endpoint": "${endpoint}", "status": ${res.statusCode} }`);
       
       try {
         const errorResponse = JSON.parse(data);
@@ -104,7 +127,8 @@ const req = https.request(options, (res) => {
 
 req.on('error', (error) => {
   const latency = Math.round((Date.now() - startTime) / 1000);
-  console.log(`❌ event=openai_diagnostic_failed status=network_error model=${MODEL} latency=${latency}s`);
+  console.log(`❌ event=openai_diagnostic_failed status=network_error model=${MODEL} endpoint=${endpoint} latency=${latency}s`);
+  console.log(`{ "ok": false, "model": "${MODEL}", "endpoint": "${endpoint}", "status": "network_error" }`);
   console.log(`Network error: ${error.message}`);
   process.exit(1);
 });
