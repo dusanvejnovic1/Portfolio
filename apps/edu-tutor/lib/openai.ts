@@ -13,7 +13,7 @@ export function validateEnvironment(): { ok: boolean; error?: string } {
     return { ok: false, error: 'OPENAI_API_KEY environment variable is required' }
   }
   
-  const model = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
+  const model = process.env.DEFAULT_MODEL || 'gpt-5-mini'
   if (!model) {
     return { ok: false, error: 'DEFAULT_MODEL is not configured' }
   }
@@ -36,8 +36,8 @@ function getOpenAIClient(): OpenAI {
 
 export const openai = getOpenAIClient
 
-export const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
-export const QUALITY_MODEL = process.env.QUALITY_MODEL || 'gpt-4o'
+export const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-mini'
+export const QUALITY_MODEL = process.env.QUALITY_MODEL || 'gpt-5'
 
 export async function moderateContent(input: string): Promise<ModerationResult> {
   try {
