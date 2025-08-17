@@ -34,10 +34,14 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
   })
   const [lastUserMessage, setLastUserMessage] = useState('')
   const [currentImage, setCurrentImage] = useState<File | null>(null)
+  const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium')
   
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  
+  // Helper to check if current model is GPT-5
+  const isGpt5Model = selectedModel && /^gpt-5/.test(selectedModel)
   
   // Sync with prop changes
   React.useEffect(() => {
@@ -102,12 +106,19 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
         })
       } else {
         // Use regular chat API for text-only
+        const requestBody: Record<string, unknown> = { message, mode, model: selectedModel }
+        
+        // Add reasoning for GPT-5 models
+        if (isGpt5Model) {
+          requestBody.reasoning = { effort: reasoningEffort }
+        }
+        
         response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ message, mode, model: selectedModel }),
+          body: JSON.stringify(requestBody),
           signal: abortControllerRef.current.signal
         })
       }
@@ -205,7 +216,7 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
       addMessage(`Error: ${errorMessage}`, false)
       setStreamingState({ isStreaming: false, currentContent: '' })
     }
-  }, [streamingState.isStreaming, addMessage, lastUserMessage, selectedModel])
+  }, [streamingState.isStreaming, addMessage, lastUserMessage, selectedModel, isGpt5Model, reasoningEffort])
   
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -267,6 +278,26 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
               label="Hints mode"
               disabled={streamingState.isStreaming}
             />
+            
+            {/* Reasoning controls for GPT-5 models */}
+            {isGpt5Model && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="reasoning-effort" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Reasoning:
+                </label>
+                <select
+                  id="reasoning-effort"
+                  value={reasoningEffort}
+                  onChange={(e) => setReasoningEffort(e.target.value as 'low' | 'medium' | 'high')}
+                  disabled={streamingState.isStreaming}
+                  className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            )}
             {process.env.NEXT_PUBLIC_FEATURE_DIAGNOSTICS === 'true' && (
               <button
                 onClick={async () => {
