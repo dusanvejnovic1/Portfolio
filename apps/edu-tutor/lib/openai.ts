@@ -96,25 +96,33 @@ export async function testOpenAIConnection(testModel?: string) {
     const client = getOpenAIClient()
     
     if (isGpt5(model)) {
-      // Use Responses API for GPT-5 (fallback to Chat Completions for now)
-      // Note: This is a placeholder. The actual Responses API interface 
-      // may differ when GPT-5 is available.
-      console.warn(`GPT-5 detected (${model}) but using Chat Completions API as fallback. Responses API implementation pending.`)
-      
-      const completion = await client.chat.completions.create({
+      // Use Responses API for GPT-5
+      const response = await client.responses.create({
         model,
-        messages: [{ role: 'user', content: 'Say "pong"' }],
-        max_tokens: 5,
-        temperature: 0
+        input: 'Say "pong"',
+        stream: false
       })
       
       const latency = Date.now() - startTime
-      const responseText = completion.choices[0]?.message?.content || ''
+      
+      // The response structure may vary, so we need to handle it carefully
+      let responseText = ''
+      if (response.output && Array.isArray(response.output)) {
+        for (const item of response.output) {
+          if (item.type === 'message' && item.content) {
+            for (const content of item.content) {
+              if (content.type === 'output_text' && content.text) {
+                responseText += content.text
+              }
+            }
+          }
+        }
+      }
       
       return {
         ok: true,
         model,
-        endpoint: `${endpoint} (fallback to chat.completions)`,
+        endpoint,
         provider_latency_ms: latency,
         response_received: !!responseText
       }

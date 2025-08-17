@@ -41,10 +41,14 @@ const apiPath = isGpt5Model ? '/v1/responses' : '/v1/chat/completions';
 
 console.log(`🔗 Using ${endpoint} API (${apiPath})`);
 if (isGpt5Model) {
-  console.log('⚠️ GPT-5 detected but using Chat Completions API as fallback. Responses API implementation pending.');
+  console.log('🎯 Using Responses API for GPT-5 model');
 }
 
-const postData = JSON.stringify({
+const postData = JSON.stringify(isGpt5Model ? {
+  model: MODEL,
+  input: 'Say \'pong\'.',
+  stream: false
+} : {
   model: MODEL,
   messages: [
     { role: 'user', content: 'Say \'pong\'.' }
@@ -55,7 +59,7 @@ const postData = JSON.stringify({
 const options = {
   hostname: 'api.openai.com',
   port: 443,
-  path: '/v1/chat/completions', // Use Chat Completions for now, even for GPT-5
+  path: apiPath,
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${OPENAI_API_KEY}`,
@@ -82,8 +86,20 @@ const req = https.request(options, (res) => {
         let messageContent;
         
         if (isGpt5Model) {
-          // For GPT-5 (currently using Chat Completions as fallback)
-          messageContent = response.choices?.[0]?.message?.content;
+          // For GPT-5 Responses API
+          if (response.output && Array.isArray(response.output)) {
+            for (const item of response.output) {
+              if (item.type === 'message' && item.content) {
+                for (const content of item.content) {
+                  if (content.type === 'output_text' && content.text) {
+                    messageContent = content.text;
+                    break;
+                  }
+                }
+              }
+              if (messageContent) break;
+            }
+          }
         } else {
           // For Chat Completions API
           messageContent = response.choices?.[0]?.message?.content;

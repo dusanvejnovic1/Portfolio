@@ -157,20 +157,23 @@ export async function POST(request: NextRequest) {
           
           if (isGpt5(model)) {
             // Use Responses API for GPT-5
-            // Note: This is a placeholder implementation. The actual Responses API 
-            // interface may differ when GPT-5 is available. For now, we fall back 
-            // to Chat Completions and add a warning.
-            console.warn(`GPT-5 detected (${model}) but using Chat Completions API as fallback. Responses API implementation pending.`)
+            console.log(`Using Responses API for GPT-5 model: ${model}`)
             
-            const completion = await openai().chat.completions.create({
+            // Prepare reasoning configuration from request
+            const { reasoning } = body
+            let reasoningConfig = undefined
+            
+            if (reasoning?.effort) {
+              reasoningConfig = { effort: reasoning.effort }
+            }
+            
+            // For now, use a simple string input combining system and user message
+            const combinedInput = `${systemPrompt}\n\nUser: ${message}`
+            
+            const response = await openai().responses.stream({
               model,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message }
-              ],
-              temperature: 0.5,
-              max_tokens: 800,
-              stream: true,
+              input: combinedInput,
+              ...(reasoningConfig && { reasoning: reasoningConfig })
             })
             
             // Send periodic keepalive comments
@@ -182,12 +185,15 @@ export async function POST(request: NextRequest) {
               }
             }, 30000) // Every 30 seconds
             
-            for await (const chunk of completion) {
-              const content = chunk.choices[0]?.delta?.content
-              if (content) {
-                fullResponse += content
-                const data = JSON.stringify({ delta: content })
-                controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+            for await (const chunk of response) {
+              // Handle different chunk types from Responses API
+              if (chunk.type === 'response.output_text.delta') {
+                const content = chunk.delta
+                if (content) {
+                  fullResponse += content
+                  const data = JSON.stringify({ delta: content })
+                  controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                }
               }
             }
             

@@ -33,12 +33,12 @@ export default function ModelSelector({ selectedModel = 'gpt-4o-mini', onModelCh
     {
       id: 'gpt-5-mini',
       name: 'GPT-5 Mini',
-      description: 'Next-gen model with reasoning (Preview)'
+      description: 'Next-gen model with reasoning'
     },
     {
       id: 'gpt-5',
       name: 'GPT-5',
-      description: 'Advanced reasoning and analysis (Preview)'
+      description: 'Advanced reasoning and analysis'
     }
   ]
 
