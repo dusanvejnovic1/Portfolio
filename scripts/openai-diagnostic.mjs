@@ -15,7 +15,8 @@
 import https from 'https';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const MODEL = process.env.MODEL || 'gpt-4o-mini';
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-mini';
+const MODEL = process.env.MODEL || DEFAULT_MODEL;
 
 if (!OPENAI_API_KEY) {
   console.error('❌ OPENAI_API_KEY environment variable is required');
@@ -24,6 +25,9 @@ if (!OPENAI_API_KEY) {
 }
 
 console.log(`🔍 Testing OpenAI API connectivity with model: ${MODEL}`);
+if (MODEL !== DEFAULT_MODEL) {
+  console.log(`📝 Using custom model (DEFAULT_MODEL: ${DEFAULT_MODEL})`);
+}
 
 const startTime = Date.now();
 
