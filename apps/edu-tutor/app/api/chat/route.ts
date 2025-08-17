@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { openai, moderateContent, DEFAULT_MODEL, validateEnvironment } from '@/lib/openai'
+import { openai, moderateContent, validateEnvironment, resolveModel } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json()
-    const { message, mode = 'hints' } = body
+    const { message, mode = 'hints', model: requestedModel } = body
     
     // Input validation
     if (!message || typeof message !== 'string') {
@@ -134,8 +134,16 @@ export async function POST(request: NextRequest) {
       systemPrompt += `\n\nIMPORTANT: You are currently in "solution" mode. Provide a complete explanation with step-by-step reasoning and include the final answer.`
     }
     
-    // Choose model (could be extended with quality flag later)
-    const model = DEFAULT_MODEL
+    // Resolve the model to use
+    const model = resolveModel(requestedModel)
+    
+    // Log the resolved model for debugging
+    console.log('Chat request using model:', {
+      requested: requestedModel,
+      resolved: model,
+      event: 'chat_model_resolved',
+      request_id: requestId
+    })
     
     // Create SSE stream
     const encoder = new TextEncoder()
@@ -208,6 +216,7 @@ export async function POST(request: NextRequest) {
             request_id: requestId,
             timestamp: new Date().toISOString(),
             ip: clientIP,
+            model: model
           })
           
           // Determine error type and provide structured response
@@ -221,15 +230,16 @@ export async function POST(request: NextRequest) {
             } else if (error.message.includes('rate limit') || error.message.includes('429')) {
               errorCode = 'rate_limited'
               errorMessage = 'OpenAI rate limit reached. Please try again in a moment.'
-            } else if (error.message.includes('model')) {
+            } else if (error.message.includes('model') || error.message.includes('Model')) {
               errorCode = 'config_error'
-              errorMessage = 'Model configuration error. Please contact support.'
+              errorMessage = `Model configuration error for '${model}'. Please verify the model is available for your API key or check for typos.`
             }
           }
           
           const errorData = JSON.stringify({ 
             error: errorMessage,
-            code: errorCode
+            code: errorCode,
+            model: model
           })
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
         } finally {

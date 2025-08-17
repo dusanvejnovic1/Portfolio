@@ -21,9 +21,10 @@ interface StreamingState {
 interface ChatProps {
   hintsMode?: boolean
   onHintsModeChange?: (mode: boolean) => void
+  selectedModel?: string
 }
 
-export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChange }: ChatProps) {
+export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChange, selectedModel }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [hintsMode, setHintsMode] = useState(propHintsMode)
@@ -89,6 +90,9 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
           formData.append('prompt', message)
         }
         formData.append('mode', mode)
+        if (selectedModel) {
+          formData.append('model', selectedModel)
+        }
         formData.append('image', image)
         
         response = await fetch('/api/vision', {
@@ -103,7 +107,7 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ message, mode }),
+          body: JSON.stringify({ message, mode, model: selectedModel }),
           signal: abortControllerRef.current.signal
         })
       }
@@ -201,7 +205,7 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
       addMessage(`Error: ${errorMessage}`, false)
       setStreamingState({ isStreaming: false, currentContent: '' })
     }
-  }, [streamingState.isStreaming, addMessage, lastUserMessage])
+  }, [streamingState.isStreaming, addMessage, lastUserMessage, selectedModel])
   
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

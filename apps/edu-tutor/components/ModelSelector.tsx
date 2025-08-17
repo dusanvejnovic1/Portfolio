@@ -15,7 +15,7 @@ interface ModelSelectorProps {
   disabled?: boolean
 }
 
-export default function ModelSelector({ selectedModel = 'gpt-4o-mini', onModelChange, disabled }: ModelSelectorProps) {
+export default function ModelSelector({ selectedModel = 'gpt-5-mini', onModelChange, disabled }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   
   const models: ModelOption[] = [

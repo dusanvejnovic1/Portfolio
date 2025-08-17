@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { openai, moderateContent } from '@/lib/openai'
+import { openai, moderateContent, VISION_MODEL, resolveModel } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { VISION_SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -69,7 +69,18 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const prompt = formData.get('prompt') as string || ''
     const mode = formData.get('mode') as string || 'hints'
+    const requestedModel = formData.get('model') as string || ''
     const imageFile = formData.get('image') as File
+    
+    // Resolve model - for vision, prefer vision-capable models but allow fallback
+    const model = requestedModel ? resolveModel(requestedModel) : VISION_MODEL
+    
+    console.log('Vision request using model:', {
+      requested: requestedModel,
+      resolved: model,
+      event: 'vision_model_resolved',
+      request_id: requestId
+    })
 
     // Validate image file is present
     if (!imageFile) {
@@ -203,7 +214,7 @@ export async function POST(request: NextRequest) {
           })
 
           const completion = await openai().chat.completions.create({
-            model: 'gpt-4o', // Use GPT-4 Vision for image analysis
+            model, // Use resolved model instead of hardcoded 'gpt-4o'
             messages,
             temperature: 0.5,
             max_tokens: 800,
@@ -242,7 +253,7 @@ export async function POST(request: NextRequest) {
             request_id: requestId,
             timestamp: new Date().toISOString(),
             ip: clientIP,
-            model: 'gpt-4o',
+            model,
             mode,
             latency,
             response_length: fullResponse.length,
