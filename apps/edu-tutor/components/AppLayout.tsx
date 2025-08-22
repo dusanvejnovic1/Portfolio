@@ -14,7 +14,7 @@ import { Mode } from '@/types/modes'
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState('gpt-5-mini')
-  const [hintsMode, setHintsMode] = useState(true)
+  const [hintsMode, setHintsMode] = useState(false)
   const [currentMode, setCurrentMode] = useState<Mode>('Chat')
 
   const toggleSidebar = () => {
