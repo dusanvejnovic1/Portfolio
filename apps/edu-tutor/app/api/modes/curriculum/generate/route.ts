@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const useSSE = acceptsSSE(request);
     console.log('Response format:', { requestId, useSSE });
 
-    const model = typeof body.model === 'string' ? body.model : process.env.DEFAULT_MODEL || 'gpt-4o-mini';
+    const model = typeof body.model === 'string' ? body.model : process.env.DEFAULT_MODEL || 'gpt-5-mini';
     console.log('Using model:', { requestId, model, requested: body.model });
 
     const client = openai();
@@ -333,7 +333,7 @@ Only return the JSON object, no additional text.`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 1500,
+        max_tokens: 8192,
         temperature: 0.3
       });
     }
