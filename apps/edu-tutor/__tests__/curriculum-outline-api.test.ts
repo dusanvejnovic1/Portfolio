@@ -15,14 +15,23 @@ vi.mock('@/lib/rateLimit', () => ({
   checkRateLimit: vi.fn()
 }))
 
-const mockGenerateResponse = vi.mocked(await import('@/lib/llm')).generateResponse
-const mockPreModerate = vi.mocked(await import('@/lib/moderation')).preModerate  
-const mockValidateITContent = vi.mocked(await import('@/lib/moderation')).validateITContent
-const mockCheckRateLimit = vi.mocked(await import('@/lib/rateLimit')).checkRateLimit
+let mockGenerateResponse: ReturnType<typeof vi.fn>
+let mockPreModerate: ReturnType<typeof vi.fn>
+let mockValidateITContent: ReturnType<typeof vi.fn>
+let mockCheckRateLimit: ReturnType<typeof vi.fn>
 
 describe('Curriculum Outline API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ;(async () => {
+      const llm = await import('@/lib/llm')
+      const moderation = await import('@/lib/moderation')
+      const rateLimit = await import('@/lib/rateLimit')
+      mockGenerateResponse = vi.mocked(llm).generateResponse
+      mockPreModerate = vi.mocked(moderation).preModerate
+      mockValidateITContent = vi.mocked(moderation).validateITContent
+      mockCheckRateLimit = vi.mocked(rateLimit).checkRateLimit
+    })()
     
     // Default successful mocks
     mockCheckRateLimit.mockReturnValue({ allowed: true, remaining: 59 })
@@ -38,7 +47,7 @@ describe('Curriculum Outline API', () => {
     // Temporarily remove API key
     delete process.env.OPENAI_API_KEY
 
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -50,7 +59,7 @@ describe('Curriculum Outline API', () => {
       })
     })
 
-    const response = await POST(mockRequest)
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
     const result = await response.json()
 
     expect(response.status).toBe(500)
@@ -76,7 +85,7 @@ describe('Curriculum Outline API', () => {
     
     mockGenerateResponse.mockResolvedValue(JSON.stringify(mockOutlineResponse))
 
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -87,8 +96,7 @@ describe('Curriculum Outline API', () => {
         durationDays: 7
       })
     })
-
-    const response = await POST(mockRequest)
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
     
     if (response.status === 200) {
       const result = await response.json()
@@ -116,8 +124,8 @@ describe('Curriculum Outline API', () => {
       })
     })
 
-    const response = await POST(mockRequest)
-    const result = await response.json()
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
+  const result = await response.json()
 
     expect(response.status).toBe(429)
     expect(result.error).toContain('Too many requests')
@@ -126,7 +134,7 @@ describe('Curriculum Outline API', () => {
   it('should handle invalid request data', async () => {
     process.env.OPENAI_API_KEY = 'sk-test-mock-key'
 
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -138,8 +146,7 @@ describe('Curriculum Outline API', () => {
         durationDays: 0 // too small
       })
     })
-
-    const response = await POST(mockRequest)
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
     const result = await response.json()
 
     expect(response.status).toBe(400)
@@ -153,7 +160,7 @@ describe('Curriculum Outline API', () => {
       reason: 'Content blocked by moderation' 
     })
 
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/outline', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -165,8 +172,8 @@ describe('Curriculum Outline API', () => {
       })
     })
 
-    const response = await POST(mockRequest)
-    const result = await response.json()
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
+  const result = await response.json()
 
     expect(response.status).toBe(400)
     expect(result.error).toBeDefined()

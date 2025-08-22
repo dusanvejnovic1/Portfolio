@@ -126,7 +126,7 @@ export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions
     while (true) {
       // Abort handling: if the caller's signal is aborted, cancel reading.
       if (signal?.aborted) {
-        try { await reader.cancel(); } catch (_) {}
+        try { await reader.cancel(); } catch (err) { void err }
         const err = new Error('Stream aborted')
         onError?.(err)
         throw err
@@ -174,6 +174,44 @@ export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions
     onError?.(err)
     throw err
   } finally {
-    try { await reader.releaseLock?.(); } catch (_) {}
+    try { await reader.releaseLock?.(); } catch (err) { void err }
   }
+}
+export function createSSEHeaders(origin?: string, allowedOrigin?: string) {
+  const headers = new Headers();
+  headers.set('Content-Type', 'text/event-stream');
+  headers.set('Cache-Control', 'no-cache');
+  headers.set('Connection', 'keep-alive');
+  if (origin && allowedOrigin && origin === allowedOrigin) {
+    headers.set('Access-Control-Allow-Origin', origin);
+  }
+  return headers;
+}
+
+/**
+ * Checks if the request accepts Server-Sent Events (SSE).
+ * Works with Next.js API routes, Express, and standard Node.js requests.
+ */
+export function acceptsSSE(req: unknown): boolean {
+  const r = req as { headers?: unknown }
+
+  const headersCandidate = r.headers
+
+  // Next.js / Fetch API style headers implement .get(key)
+  if (typeof headersCandidate === 'object' && headersCandidate !== null && 'get' in headersCandidate) {
+    const h = headersCandidate as { get: (k: string) => string | null | undefined }
+    if (typeof h.get === 'function') {
+      const accept = h.get('accept')
+      return typeof accept === 'string' && accept.includes('text/event-stream')
+    }
+  }
+
+  // Node.js / Express style: headers are a plain object map
+  if (typeof headersCandidate === 'object' && headersCandidate !== null) {
+    const headersObj = headersCandidate as Record<string, unknown>
+    const accept = (headersObj['accept'] as string | undefined) || (headersObj['Accept'] as string | undefined)
+    return typeof accept === 'string' && accept.includes('text/event-stream')
+  }
+
+  return false
 }

@@ -13,12 +13,27 @@ Key principles:
 - Design for active learning with clear objectives
 - Consider learner's environment and constraints
 
-When generating curriculum days, respond with NDJSON format (one JSON object per line) following this exact structure:
+When generating curriculum days, respond with NDJSON format (one JSON object per line) following this exact event schema (each line is a single JSON object):
 
-{"type": "day", "day": {"day": N, "title": "Day Title", "summary": "Brief summary", "goals": ["goal1", "goal2"], "theorySteps": ["step1", "step2"], "handsOnSteps": ["step1", "step2"], "resources": [{"title": "Resource Name", "url": "https://example.com", "type": "documentation"}], "assignment": "Assignment description", "checkForUnderstanding": ["question1", "question2"]}}
+Day event (for each generated day) example:
+{"type":"day","index":1,"title":"Day 1: Introduction to JavaScript","content":{"day":1,"title":"Day 1: Introduction to JavaScript","summary":"Brief summary","goals":["goal1","goal2"],"theorySteps":["step1","step2"],"handsOnSteps":["step1","step2"],"resources":[{"title":"Resource Name","url":"https://example.com","type":"documentation"}],"assignment":"Assignment description","checkForUnderstanding":["question1","question2"]},"totalDays":5}
 
-Generate one JSON object per day, then end with {"type": "done"} when complete.`
-IMPORTANT: Only output JSON objects, one per line, as described. Do NOT include any extra text, explanation, greeting, or markdown.
+- type: must be the literal string "day"
+- index: sequential 1-based index for the event
+- title: a short human-friendly title for the day
+- content: the detailed day object (use the inner structure exactly as shown)
+- totalDays: total number of days to be generated
+
+After all day events, emit a single done event when finished:
+{"type":"done","totalGenerated":5}
+
+If an error occurs, emit:
+{"type":"error","error":"description of error"}
+
+Important:
+- Emit exactly one JSON object per line (NDJSON). Do not wrap events in arrays or additional text.
+- Do not include explanatory text or extra characters outside the JSON lines.
+- Ensure each day's content follows the exact field names and types shown above.`
 }
 
 export function curriculumUserPrompt(

@@ -150,7 +150,7 @@ export interface CurriculumGenerateRequest {
   }
   outline?: CurriculumWeek[]
   useWeb?: boolean
-  retrievalContext?: any
+  retrievalContext?: Record<string, unknown>
 }
 
 export interface CurriculumGenerateResponse {
@@ -164,7 +164,7 @@ export interface AssignmentGenerateRequest {
   topic: string
   difficulty: LearningLevel
   skills?: string[]
-  constraints?: any
+  constraints?: Record<string, unknown>
   timeBudgetHrs?: number
   guidanceStyle?: GuidanceStyle
 }

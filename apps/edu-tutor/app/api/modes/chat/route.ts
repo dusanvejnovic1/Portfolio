@@ -70,35 +70,33 @@ export async function POST(req: NextRequest) {
               if (accessError) {
                 console.log('GPT-5 access issue detected, falling back to GPT-4o-mini')
                 // Fallback to GPT-4o-mini
-                const completion = await client.chat.completions.create({
-                  model: 'gpt-4o-mini',
-                  messages: chatMessages,
-                  temperature: 0.5,
-                  max_tokens: 1200,
-                  stream: true,
-                })
+                const { createStreamingChatCompletion } = await import('@/lib/llm')
+                const completion = await createStreamingChatCompletion(chatMessages, { model: 'quality', maxTokens: 1200, temperature: 0.5 })
 
-                for await (const chunk of completion) {
-                  const content = chunk.choices?.[0]?.delta?.content
-                  if (content) {
-                    controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+                if (Symbol.asyncIterator in Object(completion)) {
+                  for await (const chunk of completion as AsyncIterable<any>) {
+                    const content = chunk.choices?.[0]?.delta?.content
+                    if (content) controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
                   }
+                } else {
+                  const single = completion as any
+                  const raw = single?.choices?.[0]?.message?.content
+                  if (raw && typeof raw === 'string') controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content: raw }) + '\n'))
                 }
               } else {
                 // Try GPT-5 with Chat Completions API
-                const completion = await client.chat.completions.create({
-                  model,
-                  messages: chatMessages,
-                  temperature: 0.5,
-                  max_completion_tokens: 1200, // Use max_completion_tokens for GPT-5
-                  stream: true,
-                })
+                const { createStreamingChatCompletion } = await import('@/lib/llm')
+                const completion = await createStreamingChatCompletion(chatMessages, { model: 'default', maxTokens: 1200, temperature: 0.5 })
 
-                for await (const chunk of completion) {
-                  const content = chunk.choices?.[0]?.delta?.content
-                  if (content) {
-                    controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+                if (Symbol.asyncIterator in Object(completion)) {
+                  for await (const chunk of completion as AsyncIterable<any>) {
+                    const content = chunk.choices?.[0]?.delta?.content
+                    if (content) controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
                   }
+                } else {
+                  const single = completion as any
+                  const raw = single?.choices?.[0]?.message?.content
+                  if (raw && typeof raw === 'string') controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content: raw }) + '\n'))
                 }
               }
               
@@ -106,19 +104,18 @@ export async function POST(req: NextRequest) {
             }
           } else {
             // Use standard Chat Completions API for GPT-4 family
-            const completion = await client.chat.completions.create({
-              model,
-              messages: chatMessages,
-              temperature: 0.5,
-              max_tokens: 1200,
-              stream: true,
-            })
+            const { createStreamingChatCompletion } = await import('@/lib/llm')
+            const completion = await createStreamingChatCompletion(chatMessages, { model: 'default', maxTokens: 1200, temperature: 0.5 })
 
-            for await (const chunk of completion) {
-              const content = chunk.choices?.[0]?.delta?.content
-              if (content) {
-                controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+            if (Symbol.asyncIterator in Object(completion)) {
+              for await (const chunk of completion as AsyncIterable<any>) {
+                const content = chunk.choices?.[0]?.delta?.content
+                if (content) controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
               }
+            } else {
+              const single = completion as any
+              const raw = single?.choices?.[0]?.message?.content
+              if (raw && typeof raw === 'string') controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content: raw }) + '\n'))
             }
             controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'))
           }

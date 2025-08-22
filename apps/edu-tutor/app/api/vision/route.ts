@@ -214,13 +214,8 @@ export async function POST(request: NextRequest) {
             content: userContent
           })
 
-          const completion = await openai().chat.completions.create({
-            model, // Use resolved model instead of hardcoded 'gpt-4o'
-            messages,
-            temperature: 0.5,
-            max_tokens: 800,
-            stream: true,
-          })
+          const { createStreamingChatCompletion } = await import('@/lib/llm')
+          const completion = await createStreamingChatCompletion(messages as any, { model: 'default', maxTokens: 800, temperature: 0.5 })
           
           // Send periodic keepalive comments
           const keepAliveInterval = setInterval(() => {
@@ -233,11 +228,21 @@ export async function POST(request: NextRequest) {
           
           let fullResponse = ''
           
-          for await (const chunk of completion) {
-            const content = chunk.choices[0]?.delta?.content
-            if (content) {
-              fullResponse += content
-              const data = JSON.stringify({ delta: content })
+          if (Symbol.asyncIterator in Object(completion)) {
+            for await (const chunk of completion as AsyncIterable<any>) {
+              const content = chunk.choices?.[0]?.delta?.content
+              if (content) {
+                fullResponse += content
+                const data = JSON.stringify({ delta: content })
+                controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+              }
+            }
+          } else {
+            const single = completion as any
+            const raw = single?.choices?.[0]?.message?.content
+            if (raw && typeof raw === 'string') {
+              fullResponse += raw
+              const data = JSON.stringify({ delta: raw })
               controller.enqueue(encoder.encode(`data: ${data}\n\n`))
             }
           }

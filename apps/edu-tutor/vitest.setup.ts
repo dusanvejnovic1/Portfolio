@@ -8,8 +8,9 @@ global.React = React
 // Mock next/image
 vi.mock('next/image', () => ({
   __esModule: true,
-  default: (props: any) => {
-    return React.createElement('img', props)
+  default: (props: Record<string, unknown>) => {
+    // Convert generic props to valid img props for the test renderer
+    return React.createElement('img', props as unknown as React.ImgHTMLAttributes<HTMLImageElement>)
   },
 }))
 

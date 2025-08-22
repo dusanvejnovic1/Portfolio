@@ -16,7 +16,7 @@ const mockOpenAI = {
 
 // Mock the OpenAI module
 vi.mock('@/lib/openai', () => ({
-  openai: () => mockOpenAI
+  openai: mockOpenAI
 }))
 
 // Mock the curriculum prompts
@@ -68,7 +68,7 @@ describe('Curriculum Generation API', () => {
     })
 
     // Create a mock request
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -82,12 +82,12 @@ describe('Curriculum Generation API', () => {
     })
 
     // Import and call the API
-    const { POST } = await import('@/app/api/modes/curriculum/generate/route')
+  const { POST } = await import('@/app/api/modes/curriculum/generate/route')
     
     // Mock environment variable
     process.env.OPENAI_API_KEY = 'sk-test-mock-key'
     
-    const response = await POST(mockRequest)
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
     
     // Verify OpenAI was called with correct parameters
     expect(mockOpenAI.chat.completions.create).toHaveBeenCalledWith(
@@ -116,7 +116,7 @@ describe('Curriculum Generation API', () => {
       }]
     })
 
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -131,7 +131,7 @@ describe('Curriculum Generation API', () => {
     const { POST } = await import('@/app/api/modes/curriculum/generate/route')
     process.env.OPENAI_API_KEY = 'sk-test-mock-key'
     
-    const response = await POST(mockRequest)
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
     
     // Should handle the error gracefully
     expect(response.status).toBeGreaterThanOrEqual(400)
@@ -152,7 +152,7 @@ describe('Curriculum Generation API', () => {
       }]
     })
 
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -167,7 +167,7 @@ describe('Curriculum Generation API', () => {
     const { POST } = await import('@/app/api/modes/curriculum/generate/route')
     process.env.OPENAI_API_KEY = 'sk-test-mock-key'
     
-    const response = await POST(mockRequest)
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
     
     // Should handle validation error
     expect(response.status).toBeGreaterThanOrEqual(400)
@@ -176,7 +176,7 @@ describe('Curriculum Generation API', () => {
   it('should handle missing API key error', async () => {
     delete process.env.OPENAI_API_KEY
 
-    const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
+  const mockRequest = new Request('http://localhost:3000/api/modes/curriculum/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -190,8 +190,8 @@ describe('Curriculum Generation API', () => {
 
     const { POST } = await import('@/app/api/modes/curriculum/generate/route')
     
-    const response = await POST(mockRequest)
-    const result = await response.json()
+  const response = await POST(mockRequest as unknown as import('next/server').NextRequest)
+  const result = await response.json()
     
     expect(response.status).toBe(500)
     expect(result.error).toBe('OpenAI API key not configured')

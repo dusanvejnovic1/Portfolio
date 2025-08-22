@@ -9,17 +9,18 @@ import {
 import { fetchNDJSONStream } from '@/lib/sse'
 
 interface CurriculumStreamMessage {
-  type: 'progress' | 'day' | 'error'
+  type: 'progress' | 'day' | 'error' | 'done'
   value?: string
   day?: CurriculumDay
   content?: CurriculumDay // For compatibility with server response format
   error?: string
+  totalGenerated?: number
 }
 
 function isCurriculumStreamMessage(message: unknown): message is CurriculumStreamMessage {
   if (typeof message !== 'object' || message === null) return false
   const msg = message as CurriculumStreamMessage
-  return typeof msg.type === 'string' && ['progress', 'day', 'error'].includes(msg.type)
+  return typeof msg.type === 'string' && ['progress', 'day', 'error', 'done'].includes(msg.type)
 }
 
 interface CurriculumStreamProps {
@@ -105,6 +106,27 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
                 currentDay: Math.max(prev.currentDay, day.day),
                 progress: `Completed Day ${day.day}: ${day.title}`
               }))
+            }
+          } else if (msg.type === 'done') {
+            const total = msg.totalGenerated ?? request.durationDays
+            setState(prev => ({
+              ...prev,
+              isStreaming: false,
+              totalDays: total,
+              progress: `Generation complete! Generated ${prev.days.length} days.`
+            }))
+            // Defer calling onComplete to avoid setState during render. Use a microtask.
+            if (onComplete) {
+              setTimeout(() => {
+                const plan: CurriculumPlan = {
+                  topic: request.topic,
+                  level: request.level,
+                  durationDays: request.durationDays,
+                  outline: request.outline || [],
+                  days: state.days
+                }
+                onComplete(plan)
+              }, 0)
             }
           } else if (msg.type === 'error') {
             const errorMsg = msg.error || 'Generation failed'
@@ -320,14 +342,16 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         {state.days.length > 0 && (
           <div className="p-6">
             <div className="space-y-4">
-              {state.days.map((day) => (
+              {state.days.map((day) => {
+                const displayTitle = (day.title || '').replace(/^Day\s*\d+:\s*/i, '')
+                return (
                 <div 
-                  key={day.day}
+                  key={`${day.day}-${displayTitle}`}
                   className="p-4 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50"
                 >
                   <div className="flex justify-between items-start mb-2">
                     <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                      Day {day.day}: {day.title}
+                      Day {day.day}: {displayTitle}
                     </h4>
                   </div>
                   
@@ -374,7 +398,8 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
                     </div>
                   )}
                 </div>
-              ))}
+              )
+            })}
             </div>
           </div>
         )}

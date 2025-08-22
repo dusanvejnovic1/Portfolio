@@ -211,17 +211,12 @@ export async function POST(request: NextRequest) {
               console.log(`Responses API failed for ${model}, falling back to Chat Completions API:`, responseApiError)
               usedFallback = true
               
-              // Fallback to Chat Completions API for GPT-5 models
-              const completion = await openai().chat.completions.create({
-                model,
-                messages: [
-                  { role: 'system', content: systemPrompt },
-                  { role: 'user', content: message }
-                ],
-                temperature: 0.5,
-                max_tokens: 800,
-                stream: true,
-              })
+              // Fallback to Chat Completions API for GPT-5 models via llm wrapper
+              const { createStreamingChatCompletion } = await import('@/lib/llm')
+              const completion = await createStreamingChatCompletion([
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message }
+              ], { model: 'default', maxTokens: 800, temperature: 0.5 })
               
               // Send periodic keepalive comments
               const keepAliveInterval = setInterval(() => {
@@ -232,11 +227,21 @@ export async function POST(request: NextRequest) {
                 }
               }, 30000) // Every 30 seconds
               
-              for await (const chunk of completion) {
-                const content = chunk.choices[0]?.delta?.content
-                if (content) {
-                  fullResponse += content
-                  const data = JSON.stringify({ delta: content })
+              if (Symbol.asyncIterator in Object(completion)) {
+                for await (const chunk of completion as AsyncIterable<any>) {
+                  const content = chunk.choices?.[0]?.delta?.content
+                  if (content) {
+                    fullResponse += content
+                    const data = JSON.stringify({ delta: content })
+                    controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                  }
+                }
+              } else {
+                const single = completion as any
+                const raw = single?.choices?.[0]?.message?.content
+                if (raw && typeof raw === 'string') {
+                  fullResponse += raw
+                  const data = JSON.stringify({ delta: raw })
                   controller.enqueue(encoder.encode(`data: ${data}\n\n`))
                 }
               }
@@ -245,16 +250,11 @@ export async function POST(request: NextRequest) {
             }
           } else {
             // Use Chat Completions API for GPT-4 family
-            const completion = await openai().chat.completions.create({
-              model,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message }
-              ],
-              temperature: 0.5,
-              max_tokens: 800, // Keep responses concise
-              stream: true,
-            })
+            const { createStreamingChatCompletion } = await import('@/lib/llm')
+            const completion = await createStreamingChatCompletion([
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: message }
+            ], { model: 'default', maxTokens: 800, temperature: 0.5 })
             
             // Send periodic keepalive comments
             const keepAliveInterval = setInterval(() => {
@@ -265,14 +265,24 @@ export async function POST(request: NextRequest) {
               }
             }, 30000) // Every 30 seconds
             
-            for await (const chunk of completion) {
-              const content = chunk.choices[0]?.delta?.content
-              if (content) {
-                fullResponse += content
-                const data = JSON.stringify({ delta: content })
-                controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+              if (Symbol.asyncIterator in Object(completion)) {
+                for await (const chunk of completion as AsyncIterable<any>) {
+                  const content = chunk.choices[0]?.delta?.content
+                  if (content) {
+                    fullResponse += content
+                    const data = JSON.stringify({ delta: content })
+                    controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                  }
+                }
+              } else {
+                const single = completion as any
+                const raw = single?.choices?.[0]?.message?.content
+                if (raw && typeof raw === 'string') {
+                  fullResponse += raw
+                  const data = JSON.stringify({ delta: raw })
+                  controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                }
               }
-            }
             
             clearInterval(keepAliveInterval)
           }

@@ -20,8 +20,18 @@ export async function moderateContent(
   baseUrl?: string
 ): Promise<{ flagged: boolean; reason?: string }> {
   try {
-    const url = baseUrl ? `${baseUrl}/api/moderate` : '/api/moderate'
-    
+    // Build an absolute URL when running on the server because the
+    // global fetch in Node requires an absolute URL. Prefer an explicit
+    // baseUrl argument, then NEXT_PUBLIC_BASE_URL (if set), and finally
+    // fall back to localhost with the PORT env var (dev convenience).
+    const absoluteBase = baseUrl
+      ? baseUrl.replace(/\/$/, '')
+      : process.env.NEXT_PUBLIC_BASE_URL
+      ? process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '')
+      : `http://localhost:${process.env.PORT || 3000}`
+
+    const url = `${absoluteBase}/api/moderate`
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {

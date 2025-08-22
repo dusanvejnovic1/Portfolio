@@ -141,7 +141,9 @@ export async function testOpenAIConnection(testModel?: string) {
       const completion = await client.chat.completions.create({
         model,
         messages: [{ role: 'user', content: 'Say "pong"' }],
+        // Include both parameter names to be compatible with SDK/model differences
         max_tokens: 5,
+        max_completion_tokens: 5,
         temperature: 0
       })
       

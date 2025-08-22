@@ -106,7 +106,8 @@ export async function createChatCompletion(
       return client.chat.completions.create({
         model: selectedModel,
         messages,
-        max_tokens: maxTokens,
+        // Some SDKs/models expect a different parameter name; include both where supported.
+        ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens, max_completion_tokens: maxTokens } : {}),
         temperature,
         stream
       })
@@ -117,7 +118,7 @@ export async function createChatCompletion(
   return client.chat.completions.create({
     model: selectedModel,
     messages,
-    max_tokens: maxTokens,
+    ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens, max_completion_tokens: maxTokens } : {}),
     temperature,
     stream
   })
