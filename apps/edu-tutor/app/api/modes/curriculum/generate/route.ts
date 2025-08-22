@@ -352,7 +352,7 @@ Focus specifically on Day ${dayIndex}. Respond with a single JSON object followi
 
 Only return the JSON object, no additional text.`
 
-  let effectiveModel = model
+  const effectiveModel = model
   let apiError: Error | null = null
 
   try {
