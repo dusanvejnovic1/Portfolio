@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { 
   CurriculumPlan, 
   CurriculumWeek,
-  CurriculumDay,
   CurriculumOutlineRequest, 
   CurriculumGenerateRequest,
   LearningLevel 
 } from '@/types/modes'
+import CurriculumStream from '@/components/CurriculumStream'
 
 export default function CurriculumMode() {
   const [step, setStep] = useState<'setup' | 'outline' | 'generate' | 'view'>('setup')
@@ -45,69 +45,19 @@ export default function CurriculumMode() {
     setIsLoading(false)
   }
 
-  const handleGeneratePlan = async () => {
+  const handleGeneratePlan = () => {
     if (!formData.topic || !outline) return
-
-    setIsLoading(true)
     setStep('generate')
+  }
 
-    try {
-      const generateRequest: CurriculumGenerateRequest = {
-        topic: formData.topic!,
-        level: formData.level!,
-        durationDays: formData.durationDays!,
-        batch: {
-          startDay: 1,
-          endDay: Math.min(7, formData.durationDays!) // Start with first week
-        },
-        outline
-      }
+  const handleStreamComplete = (plan: CurriculumPlan) => {
+    setCurrentPlan(plan)
+    setStep('view')
+  }
 
-      const response = await fetch('/api/modes/curriculum/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(generateRequest)
-      })
-
-      if (response.ok && response.body) {
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        const days: CurriculumDay[] = []
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n').filter(line => line.trim())
-
-          for (const line of lines) {
-            try {
-              const data = JSON.parse(line)
-              if (data.type === 'day' && data.day) {
-                days.push(data.day)
-              }
-            } catch (e) {
-              console.warn('Failed to parse streaming response:', e)
-            }
-          }
-        }
-
-        const plan: CurriculumPlan = {
-          topic: formData.topic!,
-          level: formData.level!,
-          durationDays: formData.durationDays!,
-          outline,
-          days
-        }
-
-        setCurrentPlan(plan)
-        setStep('view')
-      }
-    } catch (error) {
-      console.error('Failed to generate curriculum:', error)
-    }
-    setIsLoading(false)
+  const handleStreamError = (error: string) => {
+    console.error('Curriculum generation error:', error)
+    // Could add toast notification here
   }
 
   const exportMarkdown = async () => {
@@ -236,10 +186,9 @@ export default function CurriculumMode() {
         <div className="flex justify-end">
           <button
             onClick={handleGeneratePlan}
-            disabled={isLoading}
-            className="py-3 px-6 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="py-3 px-6 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
-            {isLoading ? 'Generating...' : 'Generate Detailed Plan'}
+            Generate Detailed Plan
           </button>
         </div>
       </div>
@@ -247,15 +196,35 @@ export default function CurriculumMode() {
   }
 
   if (step === 'generate') {
+    const generateRequest: CurriculumGenerateRequest = {
+      topic: formData.topic!,
+      level: formData.level!,
+      durationDays: formData.durationDays!,
+      batch: {
+        startDay: 1,
+        endDay: Math.min(7, formData.durationDays!) // Start with first 7 days maximum
+      },
+      outline: outline || undefined
+    }
+
     return (
-      <div className="max-w-2xl mx-auto p-6 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-          Generating Your Curriculum
-        </h2>
-        <p className="text-gray-600 dark:text-gray-400">
-          Creating detailed daily lessons with hands-on activities...
-        </p>
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Generate Curriculum
+          </h2>
+          <button
+            onClick={() => setStep('outline')}
+            className="text-gray-600 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          >
+            ← Back to Outline
+          </button>
+        </div>
+        <CurriculumStream 
+          request={generateRequest}
+          onComplete={handleStreamComplete}
+          onError={handleStreamError}
+        />
       </div>
     )
   }
