@@ -8,6 +8,19 @@ import {
 } from '@/types/modes'
 import { fetchNDJSONStream } from '@/lib/sse'
 
+interface CurriculumStreamMessage {
+  type: 'progress' | 'day' | 'error'
+  value?: string
+  day?: CurriculumDay
+  error?: string
+}
+
+function isCurriculumStreamMessage(message: unknown): message is CurriculumStreamMessage {
+  if (typeof message !== 'object' || message === null) return false
+  const msg = message as CurriculumStreamMessage
+  return typeof msg.type === 'string' && ['progress', 'day', 'error'].includes(msg.type)
+}
+
 interface CurriculumStreamProps {
   request: CurriculumGenerateRequest
   onComplete?: (plan: CurriculumPlan) => void
@@ -82,7 +95,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               progress: `Completed Day ${day.day}: ${day.title}`
             }))
           } else if (msg.type === 'error') {
-            const errorMsg = msg.message || 'Generation failed'
+            const errorMsg = msg.error || 'Generation failed'
             setState(prev => ({
               ...prev,
               error: errorMsg,
@@ -160,17 +173,6 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
   const exportToMarkdown = useCallback(async () => {
     if (state.days.length === 0) return
 
-    try {
-      const plan: CurriculumPlan = {
-        topic: request.topic,
-        level: request.level,
-        durationDays: request.durationDays,
-        outline: request.outline || [],
-        days: state.days
-      }
-
-      const exportLib = await import('@/lib/export/markdown')
-      const markdown = exportLib.exportCurriculumToMarkdown(plan)
     const plan: CurriculumPlan = {
       topic: request.topic,
       level: request.level,
@@ -206,7 +208,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${sanitizeFilename(plan.topic)}-curriculum.md`
+      a.download = `${plan.topic.replace(/[^a-zA-Z0-9-_]/g, '-')}-curriculum.md`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
