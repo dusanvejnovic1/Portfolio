@@ -73,7 +73,6 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         signal: controller.signal,
         onMessage: (message: unknown) => {
           if (!isCurriculumStreamMessage(message)) {
-            // Handle JSON fallback payloads like { days, totalDays }
             if (typeof message === 'object' && message !== null) {
               const fallback = message as { days?: CurriculumDay[], totalDays?: number }
               if (Array.isArray(fallback.days)) {
@@ -231,6 +230,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
     }
   }, [state.days, request, onError])
 
+  // ---------- THIS IS THE CORRECT RETURN BLOCK ----------
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
