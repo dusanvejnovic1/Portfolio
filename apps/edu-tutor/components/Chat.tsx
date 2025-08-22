@@ -24,7 +24,7 @@ interface ChatProps {
   selectedModel?: string
 }
 
-export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChange, selectedModel }: ChatProps) {
+export default function Chat({ hintsMode: propHintsMode = false, onHintsModeChange, selectedModel }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [hintsMode, setHintsMode] = useState(propHintsMode)
