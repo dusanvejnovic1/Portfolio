@@ -5,8 +5,19 @@ import ImageUpload from '../components/ImageUpload'
 
 // Mock FileReader
 global.FileReader = class {
-  readAsDataURL() {
-    // Don't call onload since we're mocking
+  onload: ((event: any) => void) | null = null
+  
+  readAsDataURL(file: File) {
+    // Simulate async behavior
+    setTimeout(() => {
+      if (this.onload) {
+        this.onload({
+          target: {
+            result: `data:${file.type};base64,mocked-base64-data`
+          }
+        })
+      }
+    }, 0)
   }
 } as any
 
@@ -26,7 +37,7 @@ describe('ImageUpload', () => {
     expect(screen.getByText('JPEG, PNG up to 500MB')).toBeInTheDocument()
   })
 
-  it('shows file name when image is selected', () => {
+  it('shows file name when image is selected', async () => {
     const mockFile = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
     const mockOnImageChange = vi.fn()
     
@@ -36,6 +47,9 @@ describe('ImageUpload', () => {
         onImageChange={mockOnImageChange} 
       />
     )
+    
+    // Wait for the FileReader to complete and component to re-render
+    await screen.findByText('test.jpg')
     
     // Should show file info instead of upload area
     expect(screen.getByText('test.jpg')).toBeInTheDocument()
@@ -67,7 +81,7 @@ describe('ImageUpload', () => {
       />
     )
     
-    const fileInput = screen.getByRole('button', { name: /click to upload/i }).parentElement?.querySelector('input[type="file"]')
+    const fileInput = document.querySelector('input[type="file"]')
     expect(fileInput).toHaveAttribute('accept', 'image/jpeg,image/jpg,image/png')
   })
 })
