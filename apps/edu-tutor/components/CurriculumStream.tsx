@@ -1,11 +1,31 @@
 'use client'
 
+'use client';
+
 import React, { useState, useRef, useCallback } from "react";
 import { fetchNDJSONStream } from "../lib/sse";
 
+// Define this type to match your actual data shape
+export interface CurriculumDay {
+  day: number;
+  title: string;
+  summary: string;
+  goals: string[];
+  theorySteps: string[];
+  handsOnSteps: string[];
+  resources: Array<{
+    title: string;
+    url: string;
+    type: string;
+  }>;
+  assignment: string;
+  checkForUnderstanding: string[];
+  // Add other fields as needed!
+}
+
 interface StreamState {
   isStreaming: boolean;
-  days: any[];
+  days: CurriculumDay[];
   progress: string;
   currentDay: number;
   totalDays: number;
@@ -63,43 +83,53 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
         },
         body: JSON.stringify(request),
         signal: controller.signal,
-        onMessage: (msg) => {
-          if (!msg || typeof msg !== "object") {
-            // Log if NDJSON line is not an object
+        onMessage: (msg: unknown) => {
+          if (
+            typeof msg === "object" &&
+            msg !== null &&
+            "type" in msg
+          ) {
+            // @ts-expect-error -- runtime shape check
+            if (msg.type === "day" && msg.day) {
+              // You may want to validate shape here or use a runtime type guard!
+              setState((prev) => ({
+                ...prev,
+                days: [
+                  ...prev.days,
+                  msg.day as CurriculumDay // safe cast if shape matches
+                ],
+                currentDay: prev.currentDay + 1,
+                progress: `Day ${prev.currentDay + 1} generated`,
+              }));
+            } else if (msg.type === "done") {
+              setState((prev) => ({
+                ...prev,
+                isStreaming: false,
+                progress: "Generation complete",
+              }));
+              if (onComplete) onComplete();
+            } else if (msg.type === "error") {
+              setState((prev) => ({
+                ...prev,
+                isStreaming: false,
+                error: "error" in msg && typeof msg.error === "string" ? msg.error : "Unknown error",
+              }));
+              if (onError) onError("error" in msg && typeof msg.error === "string" ? msg.error : "Unknown error");
+            }
+          } else {
             // eslint-disable-next-line no-console
             console.error("Received non-object NDJSON message:", msg);
-            return;
-          }
-          if (msg.type === "day" && msg.day) {
-            setState((prev) => ({
-              ...prev,
-              days: [...prev.days, msg.day],
-              currentDay: prev.currentDay + 1,
-              progress: `Day ${prev.currentDay + 1} generated`,
-            }));
-          } else if (msg.type === "done") {
-            setState((prev) => ({
-              ...prev,
-              isStreaming: false,
-              progress: "Generation complete",
-            }));
-            if (onComplete) onComplete();
-          } else if (msg.type === "error") {
-            setState((prev) => ({
-              ...prev,
-              isStreaming: false,
-              error: msg.error || "Unknown error",
-            }));
-            if (onError) onError(msg.error || "Unknown error");
           }
         },
-        onError: (err) => {
+        onError: (err: unknown) => {
+          const errorMsg =
+            err instanceof Error ? err.message : String(err);
           setState((prev) => ({
             ...prev,
             isStreaming: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: errorMsg,
           }));
-          if (onError) onError(err instanceof Error ? err.message : String(err));
+          if (onError) onError(errorMsg);
         },
         onComplete: () => {
           setState((prev) => ({
@@ -110,13 +140,15 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
           if (onComplete) onComplete();
         },
       });
-    } catch (err) {
+    } catch (err: unknown) {
+      const errorMsg =
+        err instanceof Error ? err.message : String(err);
       setState((prev) => ({
         ...prev,
         isStreaming: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMsg,
       }));
-      if (onError) onError(err instanceof Error ? err.message : String(err));
+      if (onError) onError(errorMsg);
     }
   }, [request, onComplete, onError]);
 
