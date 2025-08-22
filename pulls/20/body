@@ -1,0 +1,63 @@
+- [x] Explore repository structure and understand current codebase
+- [x] Validate existing build and linting processes
+- [x] Analyze current architecture (Next.js 14, App Router, TypeScript, OpenAI integration)
+
+## Status
+- PR remains open as Draft while we finish the scoped work below.
+- Scope confirmed: keep this PR for IT-focused modes, retrieval, ranking, export (Markdown-first), and model wiring. PDF export is deferred.
+
+## Decisions (locked for this PR)
+- Retrieval and Ranking
+  - Add official-source whitelist and authority boost, including QA Automation and API Testing domains (Selenium, Cypress, Playwright, JMeter, Postman, Insomnia, k6, Pact, Karate, REST Assured).
+  - Show an "Official" badge in the UI when a resource domain matches the whitelist.
+  - No fabricated URLs; always cite sources.
+- Models
+  - DEFAULT_MODEL=gpt-5mini, QUALITY_MODEL=gpt-5 via lib/llm.ts wrapper (no hard-coded models).
+  - Feature flag by tier (default vs quality) for cost/quality control.
+- Export
+  - Markdown export enabled for Curriculum plans.
+  - PDF button present but disabled with "coming soon" tooltip.
+- Rate limiting
+  - Disabled for closed testing via env toggles.
+- GuidanceStyle
+  - Remove the GuidanceStyle (Hints/Solutions) control and references from UI, prompts, and API payloads.
+
+## What’s included / planned in this PR
+- Retrieval
+  - [ ] webSearch and YouTube fetchers (MVP)
+  - [ ] Ranking with authority boost for official sources
+  - [ ] Canonical URL dedupe and basic staleness signal
+  - [ ] Tests for whitelist domains (cloud + QA/API testing)
+- Resources UI
+  - [ ] ResourceCard with "Official" badge and rationale display
+  - [ ] Resources search API route (NDJSON or JSON MVP)
+- Export
+  - [ ] Markdown export for Curriculum plans (download .md)
+  - [ ] PDF export placeholder (disabled button)
+- Models and moderation
+  - [ ] lib/llm.ts with model selection by tier (default/quality)
+  - [ ] lib/moderation.ts scaffold
+- Modes and API
+  - [ ] Mode selector component and wiring
+  - [ ] app/api/modes/* routes (curriculum outline/generate, assignment generate, assessment score, resources search)
+  - [ ] Remove guidanceStyle from request/response shapes and prompts
+- Persistence
+  - [ ] IndexedDB storage (MVP) for saved plans/resources
+- Docs
+  - [ ] Web-Search-Integration docs updated for whitelist and ranking
+  - [ ] README/Docs updates for model defaults, export priorities, no fabricated URLs
+- Tests and CI
+  - [ ] Basic tests for retrieval ranking and whitelist matching
+  - [ ] Streaming/route contract tests scaffolding
+
+## Next commits (ordered)
+1) Add official domains list (including QA/API testing), ranker authority boost, tests, and "Official" badge.
+2) Add Resources search API and UI rendering with rationale.
+3) Add Markdown export bar + disable PDF button; update docs.
+4) Wire model defaults through lib/llm.ts and replace hard-coded usage.
+5) Remove GuidanceStyle control and references (UI + prompts + payloads).
+6) Disable rate limiting for closed testing via env/middleware toggle.
+
+## Notes
+- This PR will stay as a single draft until the checklist above is complete, then we’ll mark Ready for review.
+- Follow-up enhancements (post-merge): caching for retrieval, staleness badges with last-updated normalization, transcript-aware YouTube snippets, and optional additional QA/security testing domains (OWASP ZAP, TestCafe, WireMock, Locust, Gatling, OpenAPI/AsyncAPI, SoapUI/ReadyAPI).
