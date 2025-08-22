@@ -167,7 +167,37 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
 
       const exportLib = await import('@/lib/export/markdown')
       const markdown = exportLib.exportCurriculumToMarkdown(plan)
-      
+    const plan: CurriculumPlan = {
+      topic: request.topic,
+      level: request.level,
+      durationDays: request.durationDays,
+      outline: request.outline || [],
+      days: state.days
+    }
+
+    let exportLib
+    try {
+      exportLib = await import('@/lib/export/markdown')
+    } catch (importError) {
+      console.error('Failed to import markdown export module:', importError)
+      if (onError) {
+        onError('Failed to load markdown export module')
+      }
+      return
+    }
+
+    let markdown
+    try {
+      markdown = exportLib.exportCurriculumToMarkdown(plan)
+    } catch (exportError) {
+      console.error('Failed to export curriculum to markdown:', exportError)
+      if (onError) {
+        onError('Failed to export curriculum to markdown')
+      }
+      return
+    }
+
+    try {
       const blob = new Blob([markdown], { type: 'text/markdown' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
