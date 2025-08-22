@@ -276,6 +276,13 @@ interface CurriculumDayContent {
   checkForUnderstanding: string[];
 }
 
+function extractFirstJsonObject(text: string): string | null {
+  // Remove markdown code fences if present
+  const cleaned = text.replace(/```json([\s\S]*?)```/g, '$1').replace(/```([\s\S]*?)```/g, '$1');
+  const match = cleaned.match(/{[\s\S]*}/);
+  return match ? match[0] : null;
+}
+
 async function generateSingleDay(
   client: OpenAIClient,
   model: string,
@@ -352,8 +359,14 @@ Only return the JSON object, no additional text.`;
       throw new Error('No response from OpenAI');
     }
 
+    const jsonString = extractFirstJsonObject(response);
+    if (!jsonString) {
+      console.error('No JSON object found in OpenAI response:', response);
+      throw new Error('Invalid JSON response from OpenAI');
+    }
+
     try {
-      const parsed = JSON.parse(response);
+      const parsed = JSON.parse(jsonString);
       if (!parsed.day || !parsed.title || !parsed.summary) {
         throw new Error('Invalid day structure returned from OpenAI');
       }
