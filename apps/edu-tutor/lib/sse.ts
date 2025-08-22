@@ -190,8 +190,8 @@ export async function fetchNDJSONStream<T = unknown>(
   // Handle both streaming NDJSON and regular JSON responses
   const contentType = response.headers.get('Content-Type') || ''
   
-  if (contentType.includes('application/x-ndjson')) {
-    // Stream NDJSON
+  if (contentType.includes('application/x-ndjson') || contentType.includes('text/event-stream')) {
+    // Stream NDJSON (both content types treated as line-delimited JSON)
     return readNDJSONStream<T>(response, { signal, onMessage, onError, onComplete })
   } else {
     // Fallback to regular JSON

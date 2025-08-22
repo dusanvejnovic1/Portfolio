@@ -16,7 +16,7 @@ interface IntegrationsHealthResponse {
 }
 
 export async function GET() {
-  const requestId = randomUUID()
+  const requestId = crypto.randomUUID()
   console.log('Integrations health check started:', { requestId, timestamp: new Date().toISOString() })
   
   try {

@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     console.log('Response format:', { requestId, useSSE })
 
     // Get OpenAI model
-    const model = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini'
+    const model = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
     const client = openai()
 
     if (useSSE) {
@@ -120,9 +120,10 @@ async function createSSEResponse(
               // Send day event
               const dayEvent = {
                 type: 'day',
+                day: dayContent, // For compatibility with client expecting msg.day
+                content: dayContent, // For compatibility with client expecting msg.content
                 index: dayIndex,
                 title: dayContent.title,
-                content: dayContent,
                 totalDays: request.durationDays
               }
               

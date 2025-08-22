@@ -12,6 +12,7 @@ interface CurriculumStreamMessage {
   type: 'progress' | 'day' | 'error'
   value?: string
   day?: CurriculumDay
+  content?: CurriculumDay // For compatibility with server response format
   error?: string
 }
 
@@ -76,7 +77,19 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         signal: controller.signal,
         onMessage: (message: unknown) => {
           if (!isCurriculumStreamMessage(message)) {
-            // Optionally log or handle invalid message
+            // Handle JSON fallback payloads like { days, totalDays }
+            if (typeof message === 'object' && message !== null) {
+              const fallback = message as { days?: CurriculumDay[], totalDays?: number }
+              if (Array.isArray(fallback.days)) {
+                setState(prev => ({
+                  ...prev,
+                  days: fallback.days!.sort((a, b) => a.day - b.day),
+                  currentDay: fallback.days!.length,
+                  progress: `Loaded ${fallback.days!.length} days from fallback response`
+                }))
+                return
+              }
+            }
             return;
           }
           const msg = message as CurriculumStreamMessage;
@@ -86,14 +99,18 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               ...prev,
               progress: msg.value || ''
             }))
-          } else if (msg.type === 'day' && msg.day) {
-            const day = msg.day as CurriculumDay
-            setState(prev => ({
-              ...prev,
-              days: [...prev.days, day].sort((a, b) => a.day - b.day),
-              currentDay: Math.max(prev.currentDay, day.day),
-              progress: `Completed Day ${day.day}: ${day.title}`
-            }))
+          } else if (msg.type === 'day') {
+            // Accept day from either msg.day or msg.content for compatibility
+            const dayData = msg.day || msg.content
+            if (dayData) {
+              const day = dayData as CurriculumDay
+              setState(prev => ({
+                ...prev,
+                days: [...prev.days, day].sort((a, b) => a.day - b.day),
+                currentDay: Math.max(prev.currentDay, day.day),
+                progress: `Completed Day ${day.day}: ${day.title}`
+              }))
+            }
           } else if (msg.type === 'error') {
             const errorMsg = msg.error || 'Generation failed'
             setState(prev => ({
