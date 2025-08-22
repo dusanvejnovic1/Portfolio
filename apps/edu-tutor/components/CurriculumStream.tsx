@@ -1,5 +1,3 @@
-'use client'
-
 'use client';
 
 import React, { useState, useRef, useCallback } from "react";
@@ -22,6 +20,11 @@ export interface CurriculumDay {
   checkForUnderstanding: string[];
   // Add other fields as needed!
 }
+
+type CurriculumStreamMessage =
+  | { type: "day"; day: CurriculumDay }
+  | { type: "done" }
+  | { type: "error"; error: string };
 
 interface StreamState {
   isStreaming: boolean;
@@ -84,37 +87,30 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
         body: JSON.stringify(request),
         signal: controller.signal,
         onMessage: (msg: unknown) => {
-          if (
-            typeof msg === "object" &&
-            msg !== null &&
-            "type" in msg
-          ) {
-            // @ts-expect-error -- runtime shape check
-            if (msg.type === "day" && msg.day) {
-              // You may want to validate shape here or use a runtime type guard!
+          // Type guard for CurriculumStreamMessage
+          if (typeof msg === "object" && msg !== null && "type" in msg) {
+            const message = msg as CurriculumStreamMessage;
+            if (message.type === "day") {
               setState((prev) => ({
                 ...prev,
-                days: [
-                  ...prev.days,
-                  msg.day as CurriculumDay // safe cast if shape matches
-                ],
+                days: [...prev.days, message.day],
                 currentDay: prev.currentDay + 1,
                 progress: `Day ${prev.currentDay + 1} generated`,
               }));
-            } else if (msg.type === "done") {
+            } else if (message.type === "done") {
               setState((prev) => ({
                 ...prev,
                 isStreaming: false,
                 progress: "Generation complete",
               }));
               if (onComplete) onComplete();
-            } else if (msg.type === "error") {
+            } else if (message.type === "error") {
               setState((prev) => ({
                 ...prev,
                 isStreaming: false,
-                error: "error" in msg && typeof msg.error === "string" ? msg.error : "Unknown error",
+                error: message.error,
               }));
-              if (onError) onError("error" in msg && typeof msg.error === "string" ? msg.error : "Unknown error");
+              if (onError) onError(message.error);
             }
           } else {
             // eslint-disable-next-line no-console
