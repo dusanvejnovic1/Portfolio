@@ -49,12 +49,10 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const startGeneration = useCallback(async () => {
-    // Clean up any existing stream
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
 
-    // Create new abort controller
     const controller = new AbortController()
     abortControllerRef.current = controller
 
@@ -70,9 +68,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
     try {
       await fetchNDJSONStream('/api/modes/curriculum/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
         signal: controller.signal,
         onMessage: (message: unknown) => {
@@ -90,9 +86,9 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
                 return
               }
             }
-            return;
+            return
           }
-          const msg = message as CurriculumStreamMessage;
+          const msg = message as CurriculumStreamMessage
           
           if (msg.type === 'progress') {
             setState(prev => ({
@@ -100,7 +96,6 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               progress: msg.value || ''
             }))
           } else if (msg.type === 'day') {
-            // Accept day from either msg.day or msg.content for compatibility
             const dayData = msg.day || msg.content
             if (dayData) {
               const day = dayData as CurriculumDay
@@ -132,11 +127,9 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               outline: request.outline || [],
               days: prev.days
             }
-            
             if (onComplete) {
               onComplete(plan)
             }
-            
             return {
               ...prev,
               isStreaming: false,
@@ -391,7 +384,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
           <div className="p-12 text-center">
             <div className="text-gray-400 dark:text-gray-500 mb-4">
               <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.2[...]
               </svg>
             </div>
             <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
@@ -405,123 +398,4 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
       </div>
     </div>
   )
-}          if (typeof msg === "object" && msg !== null && "type" in msg) {
-            const message = msg as CurriculumStreamMessage;
-            if (message.type === "day") {
-              setState((prev) => {
-                const newDays = [...prev.days, message.day];
-                daysRef.current = newDays;
-                return {
-                  ...prev,
-                  days: newDays,
-                  currentDay: prev.currentDay + 1,
-                  progress: `Day ${prev.currentDay + 1} generated`,
-                };
-              });
-            } else if (message.type === "done") {
-              setState((prev) => ({
-                ...prev,
-                isStreaming: false,
-                progress: "Generation complete",
-              }));
-              if (onComplete) {
-                // Use the ref for latest days
-                // Return a full CurriculumPlan according to your canonical type
-                onComplete({
-                  topic: request.topic,
-                  level: request.level,
-                  durationDays: request.durationDays,
-                  goals: request.goals ?? [],
-                  outline: request.outline ?? undefined,
-                  days: daysRef.current,
-                  totalDays: request.durationDays,
-                });
-              }
-            } else if (message.type === "error") {
-              setState((prev) => ({
-                ...prev,
-                isStreaming: false,
-                error: message.error,
-              }));
-              if (onError) onError(message.error);
-            }
-          } else {
-            // eslint-disable-next-line no-console
-            console.error("Received non-object NDJSON message:", msg);
-          }
-        },
-        onError: (err: unknown) => {
-          const errorMsg =
-            err instanceof Error ? err.message : String(err);
-          setState((prev) => ({
-            ...prev,
-            isStreaming: false,
-            error: errorMsg,
-          }));
-          if (onError) onError(errorMsg);
-        },
-        onComplete: () => {
-          setState((prev) => ({
-            ...prev,
-            isStreaming: false,
-            progress: "Generation complete",
-          }));
-          if (onComplete) {
-            onComplete({
-              topic: request.topic,
-              level: request.level,
-              durationDays: request.durationDays,
-              goals: request.goals ?? [],
-              outline: request.outline ?? undefined,
-              days: daysRef.current,
-              totalDays: request.durationDays,
-            });
-          }
-        },
-      });
-    } catch (err: unknown) {
-      const errorMsg =
-        err instanceof Error ? err.message : String(err);
-      setState((prev) => ({
-        ...prev,
-        isStreaming: false,
-        error: errorMsg,
-      }));
-      if (onError) onError(errorMsg);
-    }
-  }, [request, onComplete, onError]);
-
-  return (
-    <div>
-      <button
-        onClick={startGeneration}
-        disabled={state.isStreaming}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
-      >
-        {state.isStreaming ? "Generating..." : "Generate Curriculum"}
-      </button>
-      <div className="mt-4">
-        {state.progress && (
-          <div className="text-sm text-gray-700">{state.progress}</div>
-        )}
-        {state.error && <div className="text-red-700">{state.error}</div>}
-        {state.days.length > 0 && (
-          <div className="mt-2">
-            <h3 className="font-semibold">Generated Days:</h3>
-            <ul>
-              {state.days.map((day, i) => (
-                <li key={i} className="mb-2">
-                  <pre className="p-2 bg-gray-100 rounded overflow-x-auto text-xs">
-                    {JSON.stringify(day, null, 2)}
-                  </pre>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default CurriculumStream;
+}
