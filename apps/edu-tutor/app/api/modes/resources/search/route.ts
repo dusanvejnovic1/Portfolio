@@ -4,6 +4,7 @@ import { preModerate, validateITContent } from '@/lib/moderation'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { RESOURCES_ANNOTATION_PROMPT, IT_TUTOR_SYSTEM_PROMPT } from '@/lib/prompts'
 import { ResourcesRequestSchema, ResourcesResponseSchema } from '@/lib/schemas/modes'
+import { resolveSearchProvider, SearchResult } from '@/lib/search/providers'
 
 export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID()
@@ -58,11 +59,46 @@ export async function POST(request: NextRequest) {
       subtopics: parsed.subtopics
     })
 
+    // Try to get search provider first for enhanced results
+    const searchProvider = resolveSearchProvider()
+    let searchResults: SearchResult[] = []
+    let searchVerified = false // Track if results are from verified provider
+    
+    if (searchProvider) {
+      console.log('Using search provider:', { requestId, provider: searchProvider.name })
+      try {
+        // Build a focused search query for the topic
+        const query = `${parsed.topic} tutorial documentation guide`
+        searchResults = await searchProvider.search(query, { count: 5 })
+        searchVerified = true
+        console.log('Provider search results:', { requestId, count: searchResults.length })
+      } catch (error) {
+        console.warn('Search provider failed, falling back to AI-only:', { requestId, error })
+      }
+    } else {
+      console.log('No search provider configured, using AI-only approach:', { requestId })
+    }
+
+    // Create enhanced prompt with search results if available
+    let searchContext = ''
+    if (searchResults.length > 0) {
+      searchContext = `
+
+Here are some real search results to help generate realistic resources:
+${searchResults.map((result, index) => 
+`${index + 1}. ${result.title}
+   URL: ${result.url}
+   Snippet: ${result.snippet}`
+).join('\n\n')}
+
+Use these as inspiration but generate additional diverse resources to reach ${maxResults} total items.`
+    }
+
     // Create prompt for AI to generate resources
     const prompt = `${RESOURCES_ANNOTATION_PROMPT}
 
 Topic: ${parsed.topic}${subtopicsText}
-Max Results: ${maxResults}
+Max Results: ${maxResults}${searchContext}
 
 Generate ${maxResults} high-quality educational resources for learning about "${parsed.topic}". Include a mix of documentation, tutorials, videos, and official sources. Each resource should be realistic and educational.
 
@@ -81,12 +117,13 @@ Return ONLY a JSON object with this exact structure:
       "keyTakeaways": ["Key point 1", "Key point 2", "Key point 3"],
       "isOfficial": false,
       "badges": ["recent", "beginner-friendly"],
-      "verified": false
+      "verified": ${searchVerified}
     }
   ],
   "meta": {
     "totalResults": ${maxResults},
     "searchQuery": "${parsed.topic}",
+    "verified": ${searchVerified},
     "generatedAt": "${new Date().toISOString()}"
   }
 }`

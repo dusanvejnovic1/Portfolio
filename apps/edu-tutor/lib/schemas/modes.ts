@@ -33,6 +33,7 @@ export const ResourcesResponseSchema = z.object({
   meta: z.object({
     totalResults: z.number(),
     searchQuery: z.string(),
+    verified: z.boolean().optional(),
     generatedAt: z.string()
   })
 })

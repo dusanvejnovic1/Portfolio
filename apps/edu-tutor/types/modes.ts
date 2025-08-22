@@ -124,6 +124,7 @@ export interface ResourceSearchMeta {
     course?: boolean
   }
   preferOfficial?: boolean
+  verified?: boolean // Whether results came from verified search provider
 }
 
 // API Request/Response Types

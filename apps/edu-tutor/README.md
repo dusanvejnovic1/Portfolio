@@ -222,10 +222,55 @@ Content moderation endpoint (used internally).
 | `DEFAULT_MODEL` | Primary model for responses | `gpt-4o-mini` |
 | `QUALITY_MODEL` | High-quality model option | `gpt-4o` |
 | `VISION_MODEL` | Model for image analysis | `gpt-4o` |
+| `BING_SEARCH_API_KEY` | Bing Web Search API key (for IT resources mode) | - |
+| `YOUTUBE_API_KEY` | YouTube Data API key (for IT resources mode) | - |
+| `GOOGLE_CSE_API_KEY` | Google Custom Search Engine API key (optional) | - |
+| `GOOGLE_CSE_CX` | Google CSE Search Engine ID (optional) | - |
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `60000` |
 | `RATE_LIMIT_MAX` | Max requests per window | `60` |
 | `ALLOWED_ORIGIN` | CORS allowed origin | `*` |
 | `NEXT_PUBLIC_FEATURE_DIAGNOSTICS` | Enable diagnostic features in UI | `false` |
+
+### Google Custom Search Engine Setup
+
+The Educational Tutor can optionally use Google Custom Search Engine (CSE) for enhanced web search capabilities in IT resources mode. When configured, it provides more reliable and comprehensive search results.
+
+**Setup Steps:**
+
+1. **Get Google CSE API Key:**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Enable the "Custom Search API" 
+   - Create credentials (API Key)
+   - Copy the API key to `GOOGLE_CSE_API_KEY`
+
+2. **Create Custom Search Engine:**
+   - Visit [Google CSE](https://cse.google.com/cse/)
+   - Click "Add" to create a new search engine
+   - Add search sites or choose "Search the entire web"
+   - Copy the Search Engine ID (cx parameter) to `GOOGLE_CSE_CX`
+
+3. **Configure Environment:**
+   ```bash
+   GOOGLE_CSE_API_KEY=your_google_cse_api_key_here
+   GOOGLE_CSE_CX=your_search_engine_id_here
+   ```
+
+**Benefits of Google CSE:**
+- More reliable search results compared to fallback LLM-only mode
+- Better coverage of technical documentation and resources
+- Enhanced search quality for IT and programming topics
+- Results are marked as "verified" in the response metadata
+
+**Fallback Behavior:**
+- If Google CSE is not configured, the system falls back to existing Bing Web Search + LLM approach
+- Results from fallback mode are marked as `verified: false` in the API response
+- No breaking changes - all functionality works without Google CSE
+
+**Health Monitoring:**
+Use the integrations health check endpoint to monitor Google CSE connectivity:
+```bash
+curl http://localhost:3000/api/debug/check-integrations
+```
 
 ### Model Selection
 
