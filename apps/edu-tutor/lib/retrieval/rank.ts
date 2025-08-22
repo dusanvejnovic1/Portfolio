@@ -42,13 +42,22 @@ export function deduplicateResults(results: ResourceCard[]): ResourceCard[] {
  * Calculate similarity between two strings using Jaccard coefficient
  */
 export function calculateSimilarity(str1: string, str2: string): number {
-  const words1 = new Set(str1.toLowerCase().split(/\s+/))
-  const words2 = new Set(str2.toLowerCase().split(/\s+/))
+  const words1 = str1.toLowerCase().split(/\s+/)
+  const words2 = str2.toLowerCase().split(/\s+/)
   
-  const intersection = new Set([...words1].filter(x => words2.has(x)))
-  const union = new Set([...words1, ...words2])
+  const set1 = new Set(words1)
+  const set2 = new Set(words2)
   
-  return union.size === 0 ? 0 : intersection.size / union.size
+  let intersectionCount = 0
+  words1.forEach(word => {
+    if (set2.has(word)) {
+      intersectionCount++
+    }
+  })
+  
+  const unionCount = set1.size + set2.size - intersectionCount
+  
+  return unionCount === 0 ? 0 : intersectionCount / unionCount
 }
 
 /**

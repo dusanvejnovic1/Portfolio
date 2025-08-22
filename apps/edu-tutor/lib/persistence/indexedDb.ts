@@ -128,11 +128,13 @@ export async function saveCurriculumPlan(plan: CurriculumPlan): Promise<number> 
     updatedAt: new Date()
   }
   
-  return performDBOperation(
+  const result = await performDBOperation(
     STORES.PLANS,
     (store) => store.add(storedPlan),
     'readwrite'
   )
+  
+  return Number(result)
 }
 
 export async function updateCurriculumPlan(id: number, plan: Partial<CurriculumPlan>): Promise<void> {
@@ -195,11 +197,13 @@ export async function saveAssignmentSet(assignmentSet: AssignmentSet): Promise<n
     updatedAt: new Date()
   }
   
-  return performDBOperation(
+  const result = await performDBOperation(
     STORES.ASSIGNMENTS,
     (store) => store.add(storedSet),
     'readwrite'
   )
+  
+  return Number(result)
 }
 
 export async function getAssignmentSet(id: number): Promise<StoredAssignmentSet | null> {
@@ -242,11 +246,13 @@ export async function saveAssessment(
     createdAt: new Date()
   }
   
-  return performDBOperation(
+  const dbResult = await performDBOperation(
     STORES.ASSESSMENTS,
     (store) => store.add(storedAssessment),
     'readwrite'
   )
+  
+  return Number(dbResult)
 }
 
 export async function getAssessment(id: number): Promise<StoredAssessment | null> {
@@ -289,11 +295,13 @@ export async function saveResourceQuery(
     createdAt: new Date()
   }
   
-  return performDBOperation(
+  const result = await performDBOperation(
     STORES.RESOURCES,
     (store) => store.add(storedQuery),
     'readwrite'
   )
+  
+  return Number(result)
 }
 
 export async function getResourceQueries(topic?: string): Promise<StoredResourceQuery[]> {
@@ -333,11 +341,13 @@ export async function saveResource(
     tags
   }
   
-  return performDBOperation(
+  const result = await performDBOperation(
     STORES.SAVED_RESOURCES,
     (store) => store.add(savedResource),
     'readwrite'
   )
+  
+  return Number(result)
 }
 
 export async function getSavedResources(): Promise<SavedResource[]> {

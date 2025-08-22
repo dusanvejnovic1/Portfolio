@@ -227,7 +227,13 @@ export async function searchITVideos(
 
   const query = buildITVideoQuery(topic, level)
   
-  const searchOptions = {
+  const searchOptions: {
+    maxResults: number
+    order: 'relevance'
+    videoDuration: 'medium' | 'any'
+    videoDefinition: 'any'
+    publishedAfter?: string
+  } = {
     maxResults,
     order: 'relevance' as const,
     videoDuration: preferLonger ? ('medium' as const) : ('any' as const),

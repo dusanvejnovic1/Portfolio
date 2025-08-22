@@ -313,7 +313,7 @@ export function markdownToHtml(markdown: string): string {
   
   // Lists
   html = html.replace(/^\- (.*$)/gim, '<li>$1</li>')
-  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+  html = html.replace(/(<li>.*<\/li>)/gm, '<ul>$1</ul>')
   
   // Numbered lists
   html = html.replace(/^\d+\. (.*$)/gim, '<li>$1</li>')

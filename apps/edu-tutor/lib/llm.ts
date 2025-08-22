@@ -43,8 +43,9 @@ export async function createChatCompletion(
   } = options
 
   const selectedModel = getModelForTask(model)
+  const client = openai() // Call the function to get the client
 
-  return openai.chat.completions.create({
+  return client.chat.completions.create({
     model: selectedModel,
     messages,
     max_tokens: maxTokens,
@@ -87,9 +88,11 @@ export async function generateResponse(
   
   messages.push({ role: 'user' as const, content: prompt })
 
-  const completion = await createChatCompletion(messages, options)
+  const completion = await createChatCompletion(messages, { ...options, stream: false })
   
-  return completion.choices[0]?.message?.content || ''
+  // Type assertion since we know stream is false
+  const chatCompletion = completion as { choices: Array<{ message: { content: string } }> }
+  return chatCompletion.choices[0]?.message?.content || ''
 }
 
 /**
