@@ -57,23 +57,51 @@ export async function POST(req: NextRequest) {
               controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'))
               
             } catch (responseApiError) {
-              console.log('GPT-5 Responses API failed, falling back to Chat Completions API:', responseApiError)
+              console.log('GPT-5 Responses API failed, attempting Chat Completions API:', responseApiError)
               
-              // Fallback: Use Chat Completions API for compatibility
-              const completion = await client.chat.completions.create({
-                model,
-                messages: chatMessages,
-                temperature: 0.5,
-                max_completion_tokens: 1200, // Use max_completion_tokens for GPT-5
-                stream: true,
-              })
+              // Check if this is an access issue and should fallback to GPT-4
+              const accessError = responseApiError instanceof Error && (
+                responseApiError.message.includes('API key') ||
+                responseApiError.message.includes('model') ||
+                responseApiError.message.includes('authentication') ||
+                responseApiError.message.includes('unauthorized')
+              )
+              
+              if (accessError) {
+                console.log('GPT-5 access issue detected, falling back to GPT-4o-mini')
+                // Fallback to GPT-4o-mini
+                const completion = await client.chat.completions.create({
+                  model: 'gpt-4o-mini',
+                  messages: chatMessages,
+                  temperature: 0.5,
+                  max_tokens: 1200,
+                  stream: true,
+                })
 
-              for await (const chunk of completion) {
-                const content = chunk.choices?.[0]?.delta?.content
-                if (content) {
-                  controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+                for await (const chunk of completion) {
+                  const content = chunk.choices?.[0]?.delta?.content
+                  if (content) {
+                    controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+                  }
+                }
+              } else {
+                // Try GPT-5 with Chat Completions API
+                const completion = await client.chat.completions.create({
+                  model,
+                  messages: chatMessages,
+                  temperature: 0.5,
+                  max_completion_tokens: 1200, // Use max_completion_tokens for GPT-5
+                  stream: true,
+                })
+
+                for await (const chunk of completion) {
+                  const content = chunk.choices?.[0]?.delta?.content
+                  if (content) {
+                    controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+                  }
                 }
               }
+              
               controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'))
             }
           } else {
