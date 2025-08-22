@@ -1,12 +1,19 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import ImageUpload from '../components/ImageUpload'
 
-// Mock FileReader
+// Mock FileReader properly
 global.FileReader = class {
+  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null
+  
   readAsDataURL() {
-    // Don't call onload since we're mocking
+    // Simulate successful file read
+    setTimeout(() => {
+      if (this.onload) {
+        this.onload.call(this, { target: { result: 'data:image/jpeg;base64,test' } } as ProgressEvent<FileReader>)
+      }
+    }, 0)
   }
 } as any
 
@@ -26,7 +33,7 @@ describe('ImageUpload', () => {
     expect(screen.getByText('JPEG, PNG up to 500MB')).toBeInTheDocument()
   })
 
-  it('shows file name when image is selected', () => {
+  it('shows file name when image is selected', async () => {
     const mockFile = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
     const mockOnImageChange = vi.fn()
     
@@ -37,8 +44,11 @@ describe('ImageUpload', () => {
       />
     )
     
-    // Should show file info instead of upload area
-    expect(screen.getByText('test.jpg')).toBeInTheDocument()
+    // Wait for the component to process the file and show preview
+    await waitFor(() => {
+      expect(screen.getByText('test.jpg')).toBeInTheDocument()
+    }, { timeout: 100 })
+    
     expect(screen.queryByText('Click to upload')).not.toBeInTheDocument()
   })
 
@@ -67,7 +77,9 @@ describe('ImageUpload', () => {
       />
     )
     
-    const fileInput = screen.getByRole('button', { name: /click to upload/i }).parentElement?.querySelector('input[type="file"]')
+    // Find the file input directly
+    const fileInput = screen.getByDisplayValue('') as HTMLInputElement
+    expect(fileInput).toHaveAttribute('type', 'file')
     expect(fileInput).toHaveAttribute('accept', 'image/jpeg,image/jpg,image/png')
   })
 })
