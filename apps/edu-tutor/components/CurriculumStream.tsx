@@ -49,12 +49,9 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const startGeneration = useCallback(async () => {
-    // Clean up any existing stream
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
     }
-
-    // Create new abort controller
     const controller = new AbortController()
     abortControllerRef.current = controller
 
@@ -77,7 +74,6 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         signal: controller.signal,
         onMessage: (message: unknown) => {
           if (!isCurriculumStreamMessage(message)) {
-            // Handle JSON fallback payloads like { days, totalDays }
             if (typeof message === 'object' && message !== null) {
               const fallback = message as { days?: CurriculumDay[], totalDays?: number }
               if (Array.isArray(fallback.days)) {
@@ -100,7 +96,6 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               progress: msg.value || ''
             }))
           } else if (msg.type === 'day') {
-            // Accept day from either msg.day or msg.content for compatibility
             const dayData = msg.day || msg.content
             if (dayData) {
               const day = dayData as CurriculumDay
@@ -132,11 +127,9 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               outline: request.outline || [],
               days: prev.days
             }
-            
             if (onComplete) {
               onComplete(plan)
             }
-            
             return {
               ...prev,
               isStreaming: false,
@@ -169,7 +162,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         }
       }
     }
-  }, [request, onComplete, onError])
+  }, [request, onComplete, onError]);
 
   const cancelGeneration = useCallback(() => {
     if (abortControllerRef.current) {
@@ -236,7 +229,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         onError('Failed to export curriculum to markdown')
       }
     }
-  }, [state.days, request, onError])
+  }, [state.days, request, onError]);
 
   return (
     <div className="max-w-4xl mx-auto p-6">

@@ -68,7 +68,7 @@ export async function preModerate(
     allowEmpty?: boolean
   }
 ): Promise<{ allowed: boolean; reason?: string; sanitizedInput?: string }> {
-  const { maxLength = 1500, allowEmpty = false } = options || {}
+  const { maxLength = 4090, allowEmpty = false } = options || {}
 
   // Basic validation
   const trimmed = input.trim()
