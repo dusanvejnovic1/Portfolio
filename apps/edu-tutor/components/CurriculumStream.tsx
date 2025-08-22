@@ -3,7 +3,6 @@
 import React, { useState, useRef, useCallback } from "react";
 import { fetchNDJSONStream } from "../lib/sse";
 
-// Define this type to match your actual data shape
 export interface CurriculumDay {
   day: number;
   title: string;
@@ -21,9 +20,14 @@ export interface CurriculumDay {
   // Add other fields as needed!
 }
 
+export interface CurriculumPlan {
+  days: CurriculumDay[];
+  totalDays: number;
+}
+
 type CurriculumStreamMessage =
   | { type: "day"; day: CurriculumDay }
-  | { type: "done" }
+  | { type: "done"; totalGenerated: number }
   | { type: "error"; error: string };
 
 interface StreamState {
@@ -42,7 +46,7 @@ interface CurriculumStreamProps {
     durationDays: number;
     goals?: string[];
   };
-  onComplete?: () => void;
+  onComplete?: (plan: CurriculumPlan) => void;
   onError?: (error: string) => void;
 }
 
@@ -87,7 +91,6 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
         body: JSON.stringify(request),
         signal: controller.signal,
         onMessage: (msg: unknown) => {
-          // Type guard for CurriculumStreamMessage
           if (typeof msg === "object" && msg !== null && "type" in msg) {
             const message = msg as CurriculumStreamMessage;
             if (message.type === "day") {
@@ -103,7 +106,12 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
                 isStreaming: false,
                 progress: "Generation complete",
               }));
-              if (onComplete) onComplete();
+              if (onComplete) {
+                onComplete({
+                  days: state.days,
+                  totalDays: state.totalDays,
+                });
+              }
             } else if (message.type === "error") {
               setState((prev) => ({
                 ...prev,
@@ -133,7 +141,12 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
             isStreaming: false,
             progress: "Generation complete",
           }));
-          if (onComplete) onComplete();
+          if (onComplete) {
+            onComplete({
+              days: state.days,
+              totalDays: state.totalDays,
+            });
+          }
         },
       });
     } catch (err: unknown) {
@@ -146,7 +159,7 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
       }));
       if (onError) onError(errorMsg);
     }
-  }, [request, onComplete, onError]);
+  }, [request, onComplete, onError, state.days, state.totalDays]);
 
   return (
     <div>
