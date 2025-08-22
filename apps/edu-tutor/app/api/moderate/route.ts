@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    if (input.length > 1500) {
+    if (input.length > 4090) {
       return Response.json(
         { error: 'Input too long. Please limit to 1500 characters.' },
         { status: 400 }
