@@ -13,7 +13,7 @@ import { Mode } from '@/types/modes'
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('gpt-5-mini')
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini')
   const [hintsMode, setHintsMode] = useState(true)
   const [currentMode, setCurrentMode] = useState<Mode>('Chat')
 
