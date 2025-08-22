@@ -18,6 +18,7 @@ When generating curriculum days, respond with NDJSON format (one JSON object per
 {"type": "day", "day": {"day": N, "title": "Day Title", "summary": "Brief summary", "goals": ["goal1", "goal2"], "theorySteps": ["step1", "step2"], "handsOnSteps": ["step1", "step2"], "resources": [{"title": "Resource Name", "url": "https://example.com", "type": "documentation"}], "assignment": "Assignment description", "checkForUnderstanding": ["question1", "question2"]}}
 
 Generate one JSON object per day, then end with {"type": "done"} when complete.`
+IMPORTANT: Only output JSON objects, one per line, as described. Do NOT include any extra text, explanation, greeting, or markdown.
 }
 
 export function curriculumUserPrompt(
