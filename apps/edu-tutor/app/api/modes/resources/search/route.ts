@@ -4,10 +4,11 @@ import { generateResponse } from '@/lib/llm'
 import { preModerate, validateITContent } from '@/lib/moderation'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { RESOURCES_ANNOTATION_PROMPT, IT_TUTOR_SYSTEM_PROMPT } from '@/lib/prompts'
-import { searchITResources, extractWebMetadata, BingWebPage } from '@/lib/retrieval/webSearch'
+import { searchITResources, extractWebMetadata, BingWebPage, buildITQuery } from '@/lib/retrieval/webSearch'
 import { searchITVideos, getVideoDetails, parseYouTubeDuration, formatDuration, YouTubeVideo, YouTubeVideoDetails } from '@/lib/retrieval/youtube'
 import { rankAndFilterResults } from '@/lib/retrieval/rank'
 import { ResourcesSearchResponse, ResourceCard } from '@/types/modes'
+import { resolveSearchProvider, SearchResult } from '@/lib/search/providers'
 
 // Request validation schema
 const ResourcesSearchRequestSchema = z.object({
@@ -76,17 +77,40 @@ export async function POST(request: NextRequest) {
       preferOfficial
     })
 
-    // Perform searches
+    // Try to get search provider first
+    const searchProvider = resolveSearchProvider()
+    let webResults: BingWebPage[] = []
+    let providerResults: SearchResult[] = []
+    let searchVerified = true // Track if results are from verified provider
+    
+    if (searchProvider) {
+      console.log('Using search provider:', { requestId, provider: searchProvider.name })
+      try {
+        const query = buildITQuery(parsed.topic, level, preferOfficial)
+        providerResults = await searchProvider.search(query, { count: 15 })
+        console.log('Provider search results:', { requestId, count: providerResults.length })
+      } catch (error) {
+        console.warn('Search provider failed, falling back to Bing:', { requestId, error })
+        searchVerified = false
+      }
+    } else {
+      console.log('No search provider configured, using fallback:', { requestId })
+      searchVerified = false
+    }
+
+    // Perform searches - use provider results if available, otherwise fallback to Bing
     const searchPromises: [Promise<BingWebPage[]>, Promise<YouTubeVideo[]>] = [
-      searchITResources(parsed.topic, {
-        level,
-        preferOfficial,
-        includeRecent: true,
-        count: 15
-      }).catch(error => {
-        console.warn('Web search failed:', { requestId, error })
-        return []
-      }),
+      providerResults.length > 0 
+        ? Promise.resolve([]) // Skip Bing if we have provider results
+        : searchITResources(parsed.topic, {
+            level,
+            preferOfficial,
+            includeRecent: true,
+            count: 15
+          }).catch(error => {
+            console.warn('Web search failed:', { requestId, error })
+            return []
+          }),
       
       // YouTube search if video preference is enabled
       preferences.video !== false 
@@ -101,12 +125,15 @@ export async function POST(request: NextRequest) {
         : Promise.resolve([])
     ]
 
-    const [webResults, youtubeResults] = await Promise.all(searchPromises)
+    const [bingResults, youtubeResults] = await Promise.all(searchPromises)
+    webResults = bingResults
 
     console.log('Search results retrieved:', { 
       requestId, 
       webCount: webResults.length,
-      videoCount: youtubeResults.length
+      providerCount: providerResults.length,
+      videoCount: youtubeResults.length,
+      verified: searchVerified
     })
 
     // Get video details for YouTube results
@@ -122,7 +149,20 @@ export async function POST(request: NextRequest) {
     // Convert search results to ResourceCard format
     const rawResourceCards: ResourceCard[] = []
 
-    // Process web results
+    // Process provider results (Google CSE) if available
+    providerResults.forEach((result: SearchResult) => {
+      rawResourceCards.push({
+        title: result.title,
+        url: result.url,
+        source: 'web', // Keep consistent with existing source format
+        relevanceScore: 60, // Slightly higher base score for provider results
+        relevanceRationale: 'Search provider result',
+        keyTakeaways: [result.snippet],
+        badges: searchVerified ? [] : []
+      })
+    })
+
+    // Process web results (Bing fallback)
     webResults.forEach((result: BingWebPage) => {
       const metadata = extractWebMetadata(result)
       
@@ -133,7 +173,7 @@ export async function POST(request: NextRequest) {
         publisher: metadata.publisher,
         publishedAt: result.dateLastCrawled,
         relevanceScore: 50, // Base score, will be updated by AI
-        relevanceRationale: 'Web search result',
+        relevanceRationale: searchVerified ? 'Web search result' : 'Web search result (unverified)',
         keyTakeaways: [result.snippet],
         isOfficial: metadata.isOfficial,
         badges: metadata.isOfficial ? ['official'] : []
@@ -250,7 +290,8 @@ Analyze these results and provide enhanced ResourceCards with improved relevance
         query: parsed.topic,
         generatedAt: new Date().toISOString(),
         preferences,
-        preferOfficial
+        preferOfficial,
+        verified: searchVerified
       }
     }
 
