@@ -2,7 +2,7 @@
  * LLM wrapper to select between DEFAULT_MODEL and QUALITY_MODEL
  */
 
-import { openai } from './openai'
+import { openai, isGpt5 } from './openai'
 
 export const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
 export const QUALITY_MODEL = process.env.QUALITY_MODEL || 'gpt-4o'
@@ -45,6 +45,75 @@ export async function createChatCompletion(
   const selectedModel = getModelForTask(model)
   const client = openai() // Call the function to get the client
 
+  // Handle GPT-5 models using Responses API
+  if (isGpt5(selectedModel)) {
+    if (stream) {
+      throw new Error('GPT-5 streaming not supported in this wrapper. Use openai().responses.stream() directly.')
+    }
+    
+    // Try Responses API first, then fallback to Chat Completions
+    try {
+      // Check if responses API exists
+      if (!client.responses || typeof client.responses.create !== 'function') {
+        throw new Error('Responses API not available in current SDK version')
+      }
+      
+      // Convert messages to a single input string for GPT-5 Responses API
+      let combinedInput = ''
+      messages.forEach(msg => {
+        if (msg.role === 'system') {
+          combinedInput += `${msg.content}\n\n`
+        } else if (msg.role === 'user') {
+          combinedInput += `User: ${msg.content}\n`
+        } else if (msg.role === 'assistant') {
+          combinedInput += `Assistant: ${msg.content}\n`
+        }
+      })
+      
+      // Use Responses API for GPT-5
+      const response = await client.responses.create({
+        model: selectedModel,
+        input: combinedInput.trim(),
+        stream: false
+      })
+      
+      // Extract text content from GPT-5 response
+      let responseText = ''
+      if (response.output && Array.isArray(response.output)) {
+        for (const item of response.output) {
+          if (item.type === 'message' && item.content) {
+            for (const content of item.content) {
+              if (content.type === 'output_text' && content.text) {
+                responseText += content.text
+              }
+            }
+          }
+        }
+      }
+      
+      // Return in Chat Completions API format for compatibility
+      return {
+        choices: [{
+          message: {
+            content: responseText
+          }
+        }]
+      }
+    } catch (error) {
+      console.log(`Responses API failed for ${selectedModel}, falling back to Chat Completions API:`, error)
+      
+      // Fallback to Chat Completions API
+      return client.chat.completions.create({
+        model: selectedModel,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+        stream
+      })
+    }
+  }
+
+  // Use Chat Completions API for GPT-4 family
   return client.chat.completions.create({
     model: selectedModel,
     messages,

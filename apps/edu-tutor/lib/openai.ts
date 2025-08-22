@@ -59,6 +59,16 @@ export function resolveModel(requestedModel?: string): string {
   return model.trim()
 }
 
+// Helper to resolve model with fallback for unsupported GPT-5 models
+export function resolveModelWithFallback(requestedModel?: string): string {
+  const model = resolveModel(requestedModel)
+  
+  // For now, if GPT-5 models are requested but might not be available,
+  // we still return them to attempt the request, but the calling code
+  // should handle fallback gracefully
+  return model
+}
+
 export async function moderateContent(input: string): Promise<ModerationResult> {
   try {
     const client = getOpenAIClient()
