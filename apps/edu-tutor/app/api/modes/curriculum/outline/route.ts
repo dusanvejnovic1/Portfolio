@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import crypto from 'crypto'
 import { generateResponse } from '@/lib/llm'
 import { preModerate, validateITContent } from '@/lib/moderation'
 import { checkRateLimit } from '@/lib/rateLimit'
@@ -25,6 +26,14 @@ export async function POST(request: NextRequest) {
   console.log('Curriculum outline request:', { requestId, timestamp: new Date().toISOString() })
 
   try {
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: 'OpenAI API key not configured' },
+        { status: 500 }
+      )
+    }
+
     // Rate limiting
     const clientIP = request.headers.get('x-forwarded-for') || 
                     request.headers.get('x-real-ip') || 
@@ -142,6 +151,26 @@ Focus on practical IT skills with progressive difficulty. Create a realistic lea
         { error: 'Invalid request format', details: error.errors },
         { status: 400 }
       )
+    }
+
+    // Provide specific error messages for API key issues
+    if (error instanceof Error) {
+      if (error.message.includes('API key') || error.message.includes('Incorrect API key') || error.message.includes('invalid_api_key')) {
+        return NextResponse.json(
+          { error: 'Invalid OpenAI API key. Please check your API key configuration.' },
+          { status: 401 }
+        )
+      } else if (error.message.includes('model') || error.message.includes('Model')) {
+        return NextResponse.json(
+          { error: `Model configuration error. Please verify the model is available for your API key.` },
+          { status: 400 }
+        )
+      } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+        return NextResponse.json(
+          { error: 'OpenAI rate limit reached. Please try again in a moment.' },
+          { status: 429 }
+        )
+      }
     }
 
     return NextResponse.json(

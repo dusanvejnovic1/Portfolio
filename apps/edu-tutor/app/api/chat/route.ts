@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import crypto from 'crypto'
 import { openai, moderateContent, validateEnvironment, resolveModel, isGpt5 } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
@@ -154,50 +155,94 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         try {
           let fullResponse = ''
+          let usedFallback = false
           
           if (isGpt5(model)) {
-            // Use Responses API for GPT-5
-            console.log(`Using Responses API for GPT-5 model: ${model}`)
+            // Try to use Responses API for GPT-5 first
+            console.log(`Attempting to use Responses API for GPT-5 model: ${model}`)
             
-            // Prepare reasoning configuration from request
-            const { reasoning } = body
-            let reasoningConfig = undefined
-            
-            if (reasoning?.effort) {
-              reasoningConfig = { effort: reasoning.effort }
-            }
-            
-            // For now, use a simple string input combining system and user message
-            const combinedInput = `${systemPrompt}\n\nUser: ${message}`
-            
-            const response = await openai().responses.stream({
-              model,
-              input: combinedInput,
-              ...(reasoningConfig && { reasoning: reasoningConfig })
-            })
-            
-            // Send periodic keepalive comments
-            const keepAliveInterval = setInterval(() => {
-              try {
-                controller.enqueue(encoder.encode(': keepalive\n\n'))
-              } catch {
-                clearInterval(keepAliveInterval)
+            try {
+              // Check if responses API exists
+              const client = openai()
+              if (!client.responses || typeof client.responses.stream !== 'function') {
+                throw new Error('Responses API not available in current SDK version')
               }
-            }, 30000) // Every 30 seconds
-            
-            for await (const chunk of response) {
-              // Handle different chunk types from Responses API
-              if (chunk.type === 'response.output_text.delta') {
-                const content = chunk.delta
+              
+              // Prepare reasoning configuration from request
+              const { reasoning } = body
+              let reasoningConfig = undefined
+              
+              if (reasoning?.effort) {
+                reasoningConfig = { effort: reasoning.effort }
+              }
+              
+              // For now, use a simple string input combining system and user message
+              const combinedInput = `${systemPrompt}\n\nUser: ${message}`
+              
+              const response = await client.responses.stream({
+                model,
+                input: combinedInput,
+                ...(reasoningConfig && { reasoning: reasoningConfig })
+              })
+              
+              // Send periodic keepalive comments
+              const keepAliveInterval = setInterval(() => {
+                try {
+                  controller.enqueue(encoder.encode(': keepalive\n\n'))
+                } catch {
+                  clearInterval(keepAliveInterval)
+                }
+              }, 30000) // Every 30 seconds
+              
+              for await (const chunk of response) {
+                // Handle different chunk types from Responses API
+                if (chunk.type === 'response.output_text.delta') {
+                  const content = chunk.delta
+                  if (content) {
+                    fullResponse += content
+                    const data = JSON.stringify({ delta: content })
+                    controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                  }
+                }
+              }
+              
+              clearInterval(keepAliveInterval)
+            } catch (responseApiError) {
+              console.log(`Responses API failed for ${model}, falling back to Chat Completions API:`, responseApiError)
+              usedFallback = true
+              
+              // Fallback to Chat Completions API for GPT-5 models
+              const completion = await openai().chat.completions.create({
+                model,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: message }
+                ],
+                temperature: 0.5,
+                max_tokens: 800,
+                stream: true,
+              })
+              
+              // Send periodic keepalive comments
+              const keepAliveInterval = setInterval(() => {
+                try {
+                  controller.enqueue(encoder.encode(': keepalive\n\n'))
+                } catch {
+                  clearInterval(keepAliveInterval)
+                }
+              }, 30000) // Every 30 seconds
+              
+              for await (const chunk of completion) {
+                const content = chunk.choices[0]?.delta?.content
                 if (content) {
                   fullResponse += content
                   const data = JSON.stringify({ delta: content })
                   controller.enqueue(encoder.encode(`data: ${data}\n\n`))
                 }
               }
+              
+              clearInterval(keepAliveInterval)
             }
-            
-            clearInterval(keepAliveInterval)
           } else {
             // Use Chat Completions API for GPT-4 family
             const completion = await openai().chat.completions.create({
@@ -240,7 +285,8 @@ export async function POST(request: NextRequest) {
             ip: clientIP,
             model,
             endpoint,
-            mode
+            mode,
+            usedFallback
           })
           
           // Send final completion message

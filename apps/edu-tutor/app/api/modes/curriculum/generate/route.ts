@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { openai } from '@/lib/openai'
+import crypto from 'crypto'
+import { openai, isGpt5 } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { CurriculumGenerateRequestSchema } from '@/lib/schemas/curriculum'
 import { curriculumSystemPrompt, curriculumUserPrompt } from '@/lib/prompts/curriculum'
@@ -47,8 +48,13 @@ export async function POST(request: NextRequest) {
     const useSSE = acceptsSSE(request)
     console.log('Response format:', { requestId, useSSE })
 
-    // Get OpenAI model
-    const model = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
+    // Get OpenAI model - use requested model or fall back to default
+    const model = (body.model && typeof body.model === 'string') 
+      ? body.model 
+      : (process.env.DEFAULT_MODEL || 'gpt-4o-mini')
+    
+    console.log('Using model:', { requestId, model, requested: body.model })
+    
     const client = openai()
 
     if (useSSE) {
@@ -70,6 +76,26 @@ export async function POST(request: NextRequest) {
         { error: 'Invalid request format', details: error.errors },
         { status: 400 }
       )
+    }
+
+    // Provide specific error messages for API key issues
+    if (error instanceof Error) {
+      if (error.message.includes('API key') || error.message.includes('Incorrect API key') || error.message.includes('invalid_api_key')) {
+        return NextResponse.json(
+          { error: 'Invalid OpenAI API key. Please check your API key configuration.' },
+          { status: 401 }
+        )
+      } else if (error.message.includes('model') || error.message.includes('Model')) {
+        return NextResponse.json(
+          { error: `Model configuration error. Please verify the model is available for your API key.` },
+          { status: 400 }
+        )
+      } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+        return NextResponse.json(
+          { error: 'OpenAI rate limit reached. Please try again in a moment.' },
+          { status: 429 }
+        )
+      }
     }
 
     return NextResponse.json(
@@ -297,9 +323,6 @@ interface CurriculumDayContent {
   checkForUnderstanding: string[]
 }
 
-/**
- * Generate a single curriculum day using OpenAI
- */
 async function generateSingleDay(
   client: OpenAIClient,
   model: string, 
@@ -331,32 +354,97 @@ Focus specifically on Day ${dayIndex}. Respond with a single JSON object followi
 
 Only return the JSON object, no additional text.`
 
-  const completion = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    max_tokens: 1500,
-    temperature: 0.3
-  })
-
-  const response = completion.choices[0]?.message?.content?.trim()
-  if (!response) {
-    throw new Error('No response from OpenAI')
-  }
+  // Implement fallback for GPT-5 models if access is not available
+  let effectiveModel = model
+  let apiError: Error | null = null
 
   try {
-    const parsed = JSON.parse(response)
+    const completion = await client.chat.completions.create({
+      model: effectiveModel,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      ...(isGpt5(effectiveModel) 
+        ? { max_completion_tokens: 1500 } // GPT-5: Use max_completion_tokens and default temperature
+        : { max_tokens: 1500, temperature: 0.3 } // GPT-4: Use max_tokens and custom temperature
+      ),
+    })
+
+    console.log('OpenAI completion response:', {
+      choices: completion.choices?.length || 0,
+      content: completion.choices[0]?.message?.content?.slice(0, 100) || 'null'
+    })
+
+    const response = completion.choices[0]?.message?.content?.trim()
+    if (!response) {
+      throw new Error('No response from OpenAI')
+    }
+
+    try {
+      const parsed = JSON.parse(response)
+      
+      // Validate required fields
+      if (!parsed.day || !parsed.title || !parsed.summary) {
+        throw new Error('Invalid day structure returned from OpenAI')
+      }
+      
+      return parsed
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response:', { response, error: parseError })
+      throw new Error('Invalid JSON response from OpenAI')
+    }
+
+  } catch (error) {
+    apiError = error instanceof Error ? error : new Error(String(error))
     
-    // Validate required fields
-    if (!parsed.day || !parsed.title || !parsed.summary) {
-      throw new Error('Invalid day structure returned from OpenAI')
+    // If GPT-5 model failed due to access issues, try fallback to GPT-4
+    if (isGpt5(effectiveModel) && (
+      apiError.message.includes('API key') || 
+      apiError.message.includes('model') ||
+      apiError.message.includes('authentication') ||
+      apiError.message.includes('unauthorized')
+    )) {
+      console.log(`GPT-5 model ${effectiveModel} not accessible, falling back to GPT-4o-mini`)
+      effectiveModel = 'gpt-4o-mini'
+      
+      try {
+        const completion = await client.chat.completions.create({
+          model: effectiveModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          max_tokens: 1500,
+          temperature: 0.3,
+        })
+
+        const response = completion.choices[0]?.message?.content?.trim()
+        if (!response) {
+          throw new Error('No response from OpenAI with fallback model')
+        }
+
+        try {
+          const parsed = JSON.parse(response)
+          
+          // Validate required fields
+          if (!parsed.day || !parsed.title || !parsed.summary) {
+            throw new Error('Invalid day structure returned from OpenAI')
+          }
+          
+          console.log(`Successfully generated with fallback model: ${effectiveModel}`)
+          return parsed
+        } catch (parseError) {
+          console.error('Failed to parse OpenAI response with fallback:', { response, error: parseError })
+          throw new Error('Invalid JSON response from OpenAI fallback')
+        }
+      } catch (fallbackError) {
+        console.error('Fallback model also failed:', fallbackError)
+        throw apiError // Throw the original error
+      }
     }
     
-    return parsed
-  } catch (parseError) {
-    console.error('Failed to parse OpenAI response:', { response, error: parseError })
-    throw new Error('Invalid JSON response from OpenAI')
+    // Re-throw the original error if no fallback was attempted or if it wasn't a GPT-5 access issue
+    throw apiError
   }
 }

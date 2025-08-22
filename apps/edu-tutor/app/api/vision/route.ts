@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import crypto from 'crypto'
 import { openai, moderateContent, VISION_MODEL, resolveModel } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { VISION_SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'

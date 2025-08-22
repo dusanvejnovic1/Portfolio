@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { testOpenAIConnection, validateEnvironment } from '@/lib/openai'
 
 export const runtime = 'nodejs'
