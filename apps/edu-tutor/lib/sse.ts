@@ -65,7 +65,9 @@ export async function readNDJSONStream<T = unknown>(
             onMessage(parsed)
           }
         } catch (parseError) {
-          console.warn('Failed to parse NDJSON line:', { line: trimmed, error: parseError })
+          // Avoid logging full line to prevent sensitive data leakage
+          const preview = trimmed.length > 20 ? trimmed.slice(0, 20) + '...' : trimmed;
+          console.warn('Failed to parse NDJSON line:', { preview, error: parseError })
           if (onError) {
             onError(new Error(`Failed to parse JSON: ${trimmed}`))
           }
