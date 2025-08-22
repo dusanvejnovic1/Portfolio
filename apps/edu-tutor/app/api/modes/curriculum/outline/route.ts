@@ -111,7 +111,7 @@ Focus on practical IT skills with progressive difficulty. Create a realistic lea
     const response = await generateResponse(
       prompt,
       IT_TUTOR_SYSTEM_PROMPT,
-      { model: 'quality', maxTokens: 1500, temperature: 0.3 }
+      { model: 'quality', maxTokens: 4090, temperature: 0.3 }
     )
 
     // Parse the JSON response
