@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { testOpenAIConnection } from '@/lib/openai'
 import { GoogleCSEProvider } from '@/lib/search/providers'
 

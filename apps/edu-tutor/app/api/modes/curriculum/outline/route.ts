@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import crypto from 'crypto'
 import { generateResponse } from '@/lib/llm'
 import { preModerate, validateITContent } from '@/lib/moderation'
 import { checkRateLimit } from '@/lib/rateLimit'
@@ -25,6 +26,14 @@ export async function POST(request: NextRequest) {
   console.log('Curriculum outline request:', { requestId, timestamp: new Date().toISOString() })
 
   try {
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: 'OpenAI API key not configured' },
+        { status: 500 }
+      )
+    }
+
     // Rate limiting
     const clientIP = request.headers.get('x-forwarded-for') || 
                     request.headers.get('x-real-ip') || 
