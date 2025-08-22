@@ -64,6 +64,10 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
     error: undefined,
   });
 
+  // Track latest days for correct onComplete callback
+  const daysRef = useRef<CurriculumDay[]>([]);
+  daysRef.current = state.days;
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const startGeneration = useCallback(async () => {
@@ -94,12 +98,16 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
           if (typeof msg === "object" && msg !== null && "type" in msg) {
             const message = msg as CurriculumStreamMessage;
             if (message.type === "day") {
-              setState((prev) => ({
-                ...prev,
-                days: [...prev.days, message.day],
-                currentDay: prev.currentDay + 1,
-                progress: `Day ${prev.currentDay + 1} generated`,
-              }));
+              setState((prev) => {
+                const newDays = [...prev.days, message.day];
+                daysRef.current = newDays;
+                return {
+                  ...prev,
+                  days: newDays,
+                  currentDay: prev.currentDay + 1,
+                  progress: `Day ${prev.currentDay + 1} generated`,
+                };
+              });
             } else if (message.type === "done") {
               setState((prev) => ({
                 ...prev,
@@ -107,8 +115,9 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
                 progress: "Generation complete",
               }));
               if (onComplete) {
+                // Use the ref for latest days
                 onComplete({
-                  days: state.days,
+                  days: daysRef.current,
                   totalDays: state.totalDays,
                 });
               }
@@ -143,7 +152,7 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
           }));
           if (onComplete) {
             onComplete({
-              days: state.days,
+              days: daysRef.current,
               totalDays: state.totalDays,
             });
           }
@@ -159,7 +168,7 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
       }));
       if (onError) onError(errorMsg);
     }
-  }, [request, onComplete, onError, state.days, state.totalDays]);
+  }, [request, onComplete, onError, state.totalDays]);
 
   return (
     <div>
