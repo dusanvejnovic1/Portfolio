@@ -1,25 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
 import { generateResponse } from '@/lib/llm'
 import { preModerate, validateITContent } from '@/lib/moderation'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { RESOURCES_ANNOTATION_PROMPT, IT_TUTOR_SYSTEM_PROMPT } from '@/lib/prompts'
-import { searchITResources, extractWebMetadata, BingWebPage } from '@/lib/retrieval/webSearch'
-import { searchITVideos, getVideoDetails, parseYouTubeDuration, formatDuration, YouTubeVideo, YouTubeVideoDetails } from '@/lib/retrieval/youtube'
-import { rankAndFilterResults } from '@/lib/retrieval/rank'
-import { ResourcesSearchResponse, ResourceCard } from '@/types/modes'
-
-// Request validation schema
-const ResourcesSearchRequestSchema = z.object({
-  topic: z.string().min(3).max(200),
-  level: z.enum(['Beginner', 'Intermediate', 'Advanced']).optional(),
-  preferences: z.object({
-    video: z.boolean().optional(),
-    docs: z.boolean().optional(),
-    course: z.boolean().optional()
-  }).optional(),
-  preferOfficial: z.boolean().optional()
-})
+import { ResourcesRequestSchema, ResourcesResponseSchema } from '@/lib/schemas/modes'
 
 export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID()
@@ -42,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     // Parse and validate request
     const body = await request.json()
-    const parsed = ResourcesSearchRequestSchema.parse(body)
+    const parsed = ResourcesRequestSchema.parse(body)
 
     // Content moderation
     const moderation = await preModerate(parsed.topic, { maxLength: 200 })
@@ -64,220 +48,102 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const level = parsed.level || 'Beginner'
-    const preferences = parsed.preferences || { video: true, docs: true, course: true }
-    const preferOfficial = parsed.preferOfficial ?? true
+    const maxResults = parsed.maxResults || 10
+    const subtopicsText = parsed.subtopics ? `, focusing on subtopics: ${parsed.subtopics.join(', ')}` : ''
 
-    console.log('Searching resources:', { 
+    console.log('Generating resources with AI:', { 
       requestId, 
       topic: parsed.topic, 
-      level,
-      preferences,
-      preferOfficial
+      maxResults,
+      subtopics: parsed.subtopics
     })
 
-    // Perform searches
-    const searchPromises: [Promise<BingWebPage[]>, Promise<YouTubeVideo[]>] = [
-      searchITResources(parsed.topic, {
-        level,
-        preferOfficial,
-        includeRecent: true,
-        count: 15
-      }).catch(error => {
-        console.warn('Web search failed:', { requestId, error })
-        return []
-      }),
-      
-      // YouTube search if video preference is enabled
-      preferences.video !== false 
-        ? searchITVideos(parsed.topic, {
-            level,
-            includeRecent: true,
-            maxResults: 10
-          }).catch(error => {
-            console.warn('YouTube search failed:', { requestId, error })
-            return []
-          })
-        : Promise.resolve([])
-    ]
+    // Create prompt for AI to generate resources
+    const prompt = `${RESOURCES_ANNOTATION_PROMPT}
 
-    const [webResults, youtubeResults] = await Promise.all(searchPromises)
+Topic: ${parsed.topic}${subtopicsText}
+Max Results: ${maxResults}
 
-    console.log('Search results retrieved:', { 
-      requestId, 
-      webCount: webResults.length,
-      videoCount: youtubeResults.length
-    })
+Generate ${maxResults} high-quality educational resources for learning about "${parsed.topic}". Include a mix of documentation, tutorials, videos, and official sources. Each resource should be realistic and educational.
 
-    // Get video details for YouTube results
-    let videoDetails: YouTubeVideoDetails[] = []
-    if (youtubeResults.length > 0) {
-      const videoIds = youtubeResults.map((video: YouTubeVideo) => video.id.videoId)
-      videoDetails = await getVideoDetails(videoIds).catch(error => {
-        console.warn('Failed to get video details:', { requestId, error })
-        return []
-      })
+Return ONLY a JSON object with this exact structure:
+{
+  "resources": [
+    {
+      "title": "Resource Title",
+      "url": "https://example.com/resource",
+      "source": "web",
+      "publisher": "Publisher Name",
+      "length": "5 min read",
+      "publishedAt": "2024-01-15",
+      "relevanceScore": 85,
+      "relevanceRationale": "Why this resource is relevant and useful",
+      "keyTakeaways": ["Key point 1", "Key point 2", "Key point 3"],
+      "isOfficial": false,
+      "badges": ["recent", "beginner-friendly"],
+      "verified": false
     }
+  ],
+  "meta": {
+    "totalResults": ${maxResults},
+    "searchQuery": "${parsed.topic}",
+    "generatedAt": "${new Date().toISOString()}"
+  }
+}`
 
-    // Convert search results to ResourceCard format
-    const rawResourceCards: ResourceCard[] = []
+    console.log('Requesting AI-generated resources:', { requestId })
 
-    // Process web results
-    webResults.forEach((result: BingWebPage) => {
-      const metadata = extractWebMetadata(result)
+    const aiResponse = await generateResponse(
+      prompt,
+      IT_TUTOR_SYSTEM_PROMPT,
+      { model: 'default', maxTokens: 3000, temperature: 0.3 }
+    )
+
+    // Parse the JSON response
+    let resourcesData
+    try {
+      resourcesData = JSON.parse(aiResponse.trim())
       
-      rawResourceCards.push({
-        title: result.name,
-        url: result.url,
-        source: 'web',
-        publisher: metadata.publisher,
-        publishedAt: result.dateLastCrawled,
-        relevanceScore: 50, // Base score, will be updated by AI
-        relevanceRationale: 'Web search result',
-        keyTakeaways: [result.snippet],
-        isOfficial: metadata.isOfficial,
-        badges: metadata.isOfficial ? ['official'] : []
-      })
-    })
-
-    // Process YouTube results
-    youtubeResults.forEach((video: YouTubeVideo) => {
-      const videoDetail = videoDetails.find((d: YouTubeVideoDetails) => d.id === video.id.videoId)
-      let duration = undefined
-      let durationFormatted = undefined
-
-      if (videoDetail?.contentDetails?.duration) {
-        duration = parseYouTubeDuration(videoDetail.contentDetails.duration)
-        durationFormatted = formatDuration(duration)
-      }
-
-      const badges = []
-      if (duration && duration >= 300 && duration <= 1800) { // 5-30 minutes
-        badges.push('good-length')
-      }
+      // Validate response structure
+      const validatedResponse = ResourcesResponseSchema.parse(resourcesData)
       
-      const monthsAgo = (Date.now() - new Date(video.snippet.publishedAt).getTime()) / (1000 * 60 * 60 * 24 * 30)
-      if (monthsAgo < 6) {
-        badges.push('recent')
-      }
-
-      rawResourceCards.push({
-        title: video.snippet.title,
-        url: `https://www.youtube.com/watch?v=${video.id.videoId}`,
-        source: 'youtube',
-        publisher: video.snippet.channelTitle,
-        length: durationFormatted,
-        duration,
-        publishedAt: video.snippet.publishedAt,
-        relevanceScore: 50, // Base score, will be updated by AI
-        relevanceRationale: 'YouTube search result',
-        keyTakeaways: [video.snippet.description.substring(0, 200)],
-        badges: badges.length > 0 ? badges as Array<'official' | 'recent' | 'comprehensive' | 'beginner-friendly' | 'advanced'> : undefined
+      console.log('AI resource generation successful:', { 
+        requestId, 
+        resourceCount: validatedResponse.resources.length 
       })
-    })
+      
+      return NextResponse.json(validatedResponse)
 
-    // Rank and filter results
-    const rankedResults = rankAndFilterResults(rawResourceCards, parsed.topic, {
-      level,
-      preferences,
-      maxResults: 20,
-      diversify: true
-    })
-
-    console.log('Results ranked and filtered:', { 
-      requestId, 
-      originalCount: rawResourceCards.length,
-      finalCount: rankedResults.length
-    })
-
-    // Use AI to annotate and improve the top results
-    if (rankedResults.length > 0) {
-      try {
-        const searchResultsText = rankedResults.slice(0, 15).map(result => 
-          `Title: ${result.title}\nURL: ${result.url}\nSource: ${result.source}\nPublisher: ${result.publisher || 'Unknown'}\nDescription: ${result.keyTakeaways[0] || ''}`
-        ).join('\n\n')
-
-        const annotationPrompt = `${RESOURCES_ANNOTATION_PROMPT}
-
-Topic: ${parsed.topic}
-Level: ${level}
-Preferences: ${JSON.stringify(preferences)}
-
-Search Results:
-${searchResultsText}
-
-Analyze these results and provide enhanced ResourceCards with improved relevance scores, key takeaways, and appropriate badges.`
-
-        console.log('Requesting AI annotation:', { requestId, resultsToAnnotate: rankedResults.slice(0, 15).length })
-
-        const aiResponse = await generateResponse(
-          annotationPrompt,
-          IT_TUTOR_SYSTEM_PROMPT,
-          { model: 'default', maxTokens: 3000, temperature: 0.3 }
-        )
-
-        // Try to parse AI-enhanced results
-        try {
-          const aiData = JSON.parse(aiResponse.trim())
-          if (aiData.items && Array.isArray(aiData.items)) {
-            console.log('AI annotation successful:', { requestId, annotatedCount: aiData.items.length })
-            
-            // Merge AI annotations with existing data, keeping original URLs
-            aiData.items.forEach((aiItem: ResourceCard, index: number) => {
-              if (index < rankedResults.length) {
-                rankedResults[index] = {
-                  ...rankedResults[index], // Keep original data
-                  ...aiItem, // Overlay AI improvements
-                  url: rankedResults[index].url, // Ensure URL stays the same
-                  source: rankedResults[index].source,
-                  duration: rankedResults[index].duration // Keep video duration
-                }
-              }
-            })
+    } catch (parseError) {
+      console.error('Failed to parse AI response as JSON:', { 
+        requestId, 
+        error: parseError, 
+        response: aiResponse.substring(0, 200) + '...' 
+      })
+      
+      return NextResponse.json(
+        { 
+          error: 'Service temporarily unavailable - invalid response format',
+          diagnostic: {
+            type: 'json_parse_error',
+            message: parseError instanceof Error ? parseError.message : 'Unknown parsing error',
+            responsePreview: aiResponse.substring(0, 200)
           }
-        } catch (parseError) {
-          console.warn('Failed to parse AI annotation, using original results:', { requestId, error: parseError })
-        }
-      } catch (aiError) {
-        console.warn('AI annotation failed, using original results:', { requestId, error: aiError })
-      }
+        },
+        { status: 502 }
+      )
     }
-
-    // Prepare final response
-    const response: ResourcesSearchResponse = {
-      items: rankedResults,
-      meta: {
-        query: parsed.topic,
-        generatedAt: new Date().toISOString(),
-        preferences,
-        preferOfficial
-      }
-    }
-
-    console.log('Resources search completed successfully:', { 
-      requestId, 
-      finalCount: response.items.length,
-      sources: response.items.reduce((acc, item) => {
-        acc[item.source] = (acc[item.source] || 0) + 1
-        return acc
-      }, {} as Record<string, number>)
-    })
-
-    return NextResponse.json(response, { status: 200 })
 
   } catch (error) {
-    console.error('Resources search error:', { 
-      requestId, 
-      error: error instanceof Error ? error.message : String(error) 
-    })
-    
-    if (error instanceof z.ZodError) {
+    if (error instanceof Error && error.name === 'ZodError') {
+      console.log('Request validation failed:', { requestId, error })
       return NextResponse.json(
-        { error: 'Invalid request format', details: error.errors },
+        { error: 'Invalid request format' },
         { status: 400 }
       )
     }
 
+    console.error('Resources search error:', { requestId, error })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
