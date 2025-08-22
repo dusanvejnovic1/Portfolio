@@ -42,7 +42,7 @@ function formatForPrint(markdown: string, title: string): string {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${title} - Educational Tutor</title>
+  <title>${title} - Portfolio AI</title>
   <style>
     @media print {
       @page {
@@ -352,7 +352,7 @@ function formatForPrintAdvanced(
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${title} - Educational Tutor</title>
+  <title>${title} - Portfolio AI</title>
   <style>
     @media print {
       @page {

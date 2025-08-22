@@ -37,7 +37,7 @@ export default function TopBar({
           
           {/* App Title */}
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Educational Tutor
+            Portfolio AI
           </h1>
         </div>
 

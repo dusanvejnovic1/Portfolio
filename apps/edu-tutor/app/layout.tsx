@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import './globals.css'
 
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Portfolio AI'
+
 export const metadata: Metadata = {
-  title: 'Educational Tutor',
+  title: APP_NAME,
   description: 'An AI-powered educational assistant that provides hints-first learning experiences',
 }
 

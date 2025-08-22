@@ -1,4 +1,4 @@
-# Educational Tutor
+# Portfolio AI
 
 An AI-powered educational assistant that provides hints-first learning experiences. Built with Next.js 14, TypeScript, and OpenAI's GPT models.
 
@@ -233,7 +233,7 @@ Content moderation endpoint (used internally).
 
 ### Google Custom Search Engine Setup
 
-The Educational Tutor can optionally use Google Custom Search Engine (CSE) for enhanced web search capabilities in IT resources mode. When configured, it provides more reliable and comprehensive search results.
+The Portfolio AI can optionally use Google Custom Search Engine (CSE) for enhanced web search capabilities in IT resources mode. When configured, it provides more reliable and comprehensive search results.
 
 **Setup Steps:**
 
@@ -429,4 +429,4 @@ This project is for educational and portfolio purposes.
 
 ---
 
-**Educational Tutor MVP** - Empowering learning through guided discovery 🎓
+**Portfolio AI MVP** - Empowering learning through guided discovery 🎓

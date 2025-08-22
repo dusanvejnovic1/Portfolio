@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test'
 
-test.describe('Educational Tutor App', () => {
+test.describe('Portfolio AI App', () => {
   test('loads homepage and displays welcome message', async ({ page }) => {
     await page.goto('/')
     
     // Check that the page loads
-    await expect(page).toHaveTitle(/Educational Tutor/)
+  await expect(page).toHaveTitle(/Portfolio AI/)
     
     // Check for main heading
-    await expect(page.getByText('Educational Tutor')).toBeVisible()
+  await expect(page.getByText('Portfolio AI')).toBeVisible()
     
     // Check for welcome message in empty state
     await expect(page.getByText('Welcome to your AI tutor!')).toBeVisible()
@@ -93,7 +93,7 @@ test.describe('Educational Tutor App', () => {
     
     // Check we're on about page
     await expect(page).toHaveURL('/about')
-    await expect(page.getByText('About Educational Tutor')).toBeVisible()
+  await expect(page.getByText('About Portfolio AI')).toBeVisible()
   })
 
   test('model selector is accessible', async ({ page }) => {
@@ -111,7 +111,7 @@ test.describe('Educational Tutor App', () => {
     await page.goto('/')
     
     // Check that page loads properly on mobile
-    await expect(page.getByText('Educational Tutor')).toBeVisible()
+  await expect(page.getByText('Portfolio AI')).toBeVisible()
     await expect(page.getByText('Welcome to your AI tutor!')).toBeVisible()
     
     // Sidebar should be closed by default on mobile

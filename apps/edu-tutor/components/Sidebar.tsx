@@ -63,7 +63,7 @@ export default function Sidebar({ isOpen = false, onToggle, currentMode = 'Chat'
       <div className="fixed left-0 top-0 bottom-0 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 z-40 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Educational Tutor</h2>
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Portfolio AI</h2>
           <button
             onClick={onToggle}
             className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
