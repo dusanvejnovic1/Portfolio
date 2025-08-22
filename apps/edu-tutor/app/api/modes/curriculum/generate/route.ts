@@ -365,7 +365,6 @@ Only return the JSON object, no additional text.`
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 1500,
         // Optionally: reasoning: { effort: 'high' },
       });
     } else {
