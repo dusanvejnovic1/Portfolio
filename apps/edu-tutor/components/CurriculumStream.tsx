@@ -62,7 +62,11 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         body: JSON.stringify(request),
         signal: controller.signal,
         onMessage: (message: unknown) => {
-          const msg = message as { type: string; value?: string; day?: CurriculumDay; message?: string }
+          if (!isCurriculumStreamMessage(message)) {
+            // Optionally log or handle invalid message
+            return;
+          }
+          const msg = message as CurriculumStreamMessage;
           
           if (msg.type === 'progress') {
             setState(prev => ({
