@@ -15,7 +15,7 @@ vi.mock('@/lib/openai', () => ({
   }),
   moderateContent: vi.fn().mockResolvedValue({ flagged: false }),
   VISION_MODEL: 'gpt-4o',
-  resolveModel: vi.fn().mockImplementation((model) => model || 'gpt-4o')
+  resolveModel: vi.fn((model) => model || 'gpt-4o')
 }))
 
 vi.mock('@/lib/rateLimit', () => ({

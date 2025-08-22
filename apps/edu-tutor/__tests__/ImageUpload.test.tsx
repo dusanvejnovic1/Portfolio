@@ -5,13 +5,17 @@ import ImageUpload from '../components/ImageUpload'
 
 // Mock FileReader properly
 global.FileReader = class {
-  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null
+  onload: ((event: any) => void) | null = null
   
-  readAsDataURL() {
-    // Simulate successful file read
+  readAsDataURL(file: File) {
+    // Simulate async behavior
     setTimeout(() => {
       if (this.onload) {
-        this.onload.call(this, { target: { result: 'data:image/jpeg;base64,test' } } as ProgressEvent<FileReader>)
+        this.onload({
+          target: {
+            result: `data:${file.type};base64,mocked-base64-data`
+          }
+        })
       }
     }, 0)
   }
@@ -44,11 +48,11 @@ describe('ImageUpload', () => {
       />
     )
     
-    // Wait for the component to process the file and show preview
-    await waitFor(() => {
-      expect(screen.getByText('test.jpg')).toBeInTheDocument()
-    }, { timeout: 100 })
+    // Wait for the FileReader to complete and component to re-render
+    await screen.findByText('test.jpg')
     
+    // Should show file info instead of upload area
+    expect(screen.getByText('test.jpg')).toBeInTheDocument()
     expect(screen.queryByText('Click to upload')).not.toBeInTheDocument()
   })
 
@@ -77,9 +81,7 @@ describe('ImageUpload', () => {
       />
     )
     
-    // Find the file input directly
-    const fileInput = screen.getByDisplayValue('') as HTMLInputElement
-    expect(fileInput).toHaveAttribute('type', 'file')
+    const fileInput = document.querySelector('input[type="file"]')
     expect(fileInput).toHaveAttribute('accept', 'image/jpeg,image/jpg,image/png')
   })
 })
