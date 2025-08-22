@@ -359,27 +359,43 @@ Only return the JSON object, no additional text.`
   let apiError: Error | null = null
 
   try {
-    const completion = await client.chat.completions.create({
-      model: effectiveModel,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      ...(isGpt5(effectiveModel) 
-        ? { max_completion_tokens: 1500 } // GPT-5: Use max_completion_tokens and default temperature
-        : { max_tokens: 1500, temperature: 0.3 } // GPT-4: Use max_tokens and custom temperature
-      ),
-    })
+    let completion;
+if (isGpt5(effectiveModel) && client.responses && client.responses.create) {
+  // Use responses API for GPT-5 models
+  completion = await client.responses.create({
+    model: effectiveModel,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    max_completion_tokens: 1500,
+    // Add other params if needed
+  });
+} else {
+  // Use chat/completions for GPT-4 and earlier
+  completion = await client.chat.completions.create({
+    model: effectiveModel,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    max_tokens: 1500,
+    temperature: 0.3,
+  });
+}
 
     console.log('OpenAI completion response:', {
       choices: completion.choices?.length || 0,
       content: completion.choices[0]?.message?.content?.slice(0, 100) || 'null'
     })
 
-    const response = completion.choices[0]?.message?.content?.trim()
-    if (!response) {
-      throw new Error('No response from OpenAI')
-    }
+  const response =
+  completion.choices?.[0]?.message?.content?.trim() || // chat/completions format
+  completion.choices?.[0]?.content?.trim();            // responses format
+
+if (!response) {
+  throw new Error('No response from OpenAI');
+}
 
     try {
       const parsed = JSON.parse(response)
