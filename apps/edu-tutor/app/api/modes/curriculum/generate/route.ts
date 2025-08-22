@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import crypto from 'crypto'
 import { openai } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { CurriculumGenerateRequestSchema } from '@/lib/schemas/curriculum'
