@@ -20,12 +20,15 @@ export default function CurriculumMode() {
   const [currentPlan, setCurrentPlan] = useState<CurriculumPlan | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [outline, setOutline] = useState<CurriculumWeek[] | null>(null)
+  const [outlineError, setOutlineError] = useState<string | null>(null)
+  const [selectedDayIdx, setSelectedDayIdx] = useState(0)
 
   const handleSetupSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.topic) return
 
     setIsLoading(true)
+    setOutlineError(null)
     try {
       // Generate outline first
       const outlineResponse = await fetch('/api/modes/curriculum/outline', {
@@ -38,9 +41,21 @@ export default function CurriculumMode() {
         const outlineData = await outlineResponse.json()
         setOutline(outlineData.outline)
         setStep('outline')
+      } else {
+        // Handle error responses
+        let errorMessage = `Request failed with status ${outlineResponse.status}`
+        try {
+          const errorData = await outlineResponse.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          // Fallback to status text if JSON parsing fails
+          errorMessage = outlineResponse.statusText || errorMessage
+        }
+        setOutlineError(errorMessage)
       }
     } catch (error) {
       console.error('Failed to generate outline:', error)
+      setOutlineError(error instanceof Error ? error.message : 'Network error occurred')
     }
     setIsLoading(false)
   }
@@ -142,6 +157,15 @@ export default function CurriculumMode() {
           >
             {isLoading ? 'Generating Outline...' : 'Generate Curriculum Outline'}
           </button>
+
+          {/* Error Display */}
+          {outlineError && (
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+              <p className="text-sm text-red-700 dark:text-red-400">
+                <span className="font-medium">Error:</span> {outlineError}
+              </p>
+            </div>
+          )}
         </form>
       </div>
     )
@@ -260,7 +284,12 @@ export default function CurriculumMode() {
               {currentPlan.days.map((day, index) => (
                 <button
                   key={index}
-                  className="w-full text-left p-3 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-200 dark:border-gray-700"
+                  onClick={() => setSelectedDayIdx(index)}
+                  className={`w-full text-left p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-200 dark:border-gray-700 ${
+                    selectedDayIdx === index 
+                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' 
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
                 >
                   <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
                     Day {day.day}
@@ -275,41 +304,41 @@ export default function CurriculumMode() {
 
           {/* Day Content */}
           <div className="lg:col-span-3">
-            {currentPlan.days.length > 0 && (
+            {currentPlan.days.length > 0 && currentPlan.days[selectedDayIdx] && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                  Day {currentPlan.days[0].day}: {currentPlan.days[0].title}
+                  Day {currentPlan.days[selectedDayIdx].day}: {currentPlan.days[selectedDayIdx].title}
                 </h3>
                 
                 <div className="prose dark:prose-invert max-w-none">
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    {currentPlan.days[0].summary}
+                    {currentPlan.days[selectedDayIdx].summary}
                   </p>
                   
                   <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Goals</h4>
                   <ul className="list-disc list-inside space-y-1 mb-4">
-                    {currentPlan.days[0].goals.map((goal, index) => (
+                    {currentPlan.days[selectedDayIdx].goals.map((goal, index) => (
                       <li key={index} className="text-gray-600 dark:text-gray-400">{goal}</li>
                     ))}
                   </ul>
 
                   <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Theory</h4>
                   <ul className="list-disc list-inside space-y-1 mb-4">
-                    {currentPlan.days[0].theorySteps.map((step, index) => (
+                    {currentPlan.days[selectedDayIdx].theorySteps.map((step, index) => (
                       <li key={index} className="text-gray-600 dark:text-gray-400">{step}</li>
                     ))}
                   </ul>
 
                   <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Hands-On Practice</h4>
                   <ul className="list-disc list-inside space-y-1 mb-4">
-                    {currentPlan.days[0].handsOnSteps.map((step, index) => (
+                    {currentPlan.days[selectedDayIdx].handsOnSteps.map((step, index) => (
                       <li key={index} className="text-gray-600 dark:text-gray-400">{step}</li>
                     ))}
                   </ul>
 
                   <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Assignment</h4>
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    {currentPlan.days[0].assignment}
+                    {currentPlan.days[selectedDayIdx].assignment}
                   </p>
                 </div>
               </div>
