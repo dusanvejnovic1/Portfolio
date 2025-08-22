@@ -80,10 +80,10 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    if (message.length > 1500) {
+    if (message.length > 4090) {
       return Response.json(
         { 
-          error: 'Message too long. Please limit to 1500 characters.',
+          error: 'Message too long. Please limit to 4090 characters.',
           code: 'message_too_long'
         },
         { status: 400 }
