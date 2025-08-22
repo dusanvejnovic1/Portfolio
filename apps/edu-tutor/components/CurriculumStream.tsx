@@ -206,7 +206,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${plan.topic.replace(/\s+/g, '-')}-curriculum.md`
+      a.download = `${sanitizeFilename(plan.topic)}-curriculum.md`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
