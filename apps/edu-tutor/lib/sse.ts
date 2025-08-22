@@ -82,7 +82,7 @@ export async function readNDJSONStream<T = unknown>(
           onMessage(parsed)
         }
       } catch (parseError) {
-        console.warn('Failed to parse final NDJSON buffer:', { buffer, error: parseError })
+        console.warn('Failed to parse final NDJSON buffer:', { buffer: buffer.length > 100 ? buffer.slice(0, 100) + '...[truncated]' : buffer, error: parseError })
       }
     }
 
