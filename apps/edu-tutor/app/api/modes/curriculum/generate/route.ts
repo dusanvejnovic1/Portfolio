@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import crypto from 'crypto'
-import { openai } from '@/lib/openai'
+import { openai, isGpt5 } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { CurriculumGenerateRequestSchema } from '@/lib/schemas/curriculum'
 import { curriculumSystemPrompt, curriculumUserPrompt } from '@/lib/prompts/curriculum'
@@ -48,8 +48,13 @@ export async function POST(request: NextRequest) {
     const useSSE = acceptsSSE(request)
     console.log('Response format:', { requestId, useSSE })
 
-    // Get OpenAI model
-    const model = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
+    // Get OpenAI model - use requested model or fall back to default
+    const model = (body.model && typeof body.model === 'string') 
+      ? body.model 
+      : (process.env.DEFAULT_MODEL || 'gpt-4o-mini')
+    
+    console.log('Using model:', { requestId, model, requested: body.model })
+    
     const client = openai()
 
     if (useSSE) {
@@ -358,8 +363,15 @@ Only return the JSON object, no additional text.`
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
     ],
-    max_tokens: 1500,
-    temperature: 0.3
+    ...(isGpt5(model) 
+      ? { max_completion_tokens: 1500 } // GPT-5: Use max_completion_tokens and default temperature
+      : { max_tokens: 1500, temperature: 0.3 } // GPT-4: Use max_tokens and custom temperature
+    ),
+  })
+
+  console.log('OpenAI completion response:', {
+    choices: completion.choices?.length || 0,
+    content: completion.choices[0]?.message?.content?.slice(0, 100) || 'null'
   })
 
   const response = completion.choices[0]?.message?.content?.trim()

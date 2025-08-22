@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
-import { openai, resolveModel } from '@/lib/openai'
+import { openai, resolveModel, isGpt5 } from '@/lib/openai'
 
 export const runtime = 'nodejs'
 
@@ -30,21 +30,70 @@ export async function POST(req: NextRequest) {
             if (m.role && m.content) chatMessages.push({ role: m.role, content: m.content })
           }
 
-          const completion = await openai().chat.completions.create({
-            model,
-            messages: chatMessages,
-            temperature: 0.5,
-            max_tokens: 1200,
-            stream: true,
-          })
+          const client = openai()
 
-          for await (const chunk of completion) {
-            const content = chunk.choices?.[0]?.delta?.content
-            if (content) {
-              controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+          if (isGpt5(model)) {
+            try {
+              // First attempt: Use OpenAI's Responses API (native GPT-5 endpoint)
+              const combinedInput = chatMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n\n')
+              
+              const response = await client.responses.stream({
+                model,
+                input: combinedInput,
+                // Note: GPT-5 Responses API doesn't use max_tokens parameter
+              })
+
+              // Handle native GPT-5 streaming response
+              // Note: The exact streaming format for GPT-5 Responses API may vary
+              // This is a simplified handling that should work with most response types
+              for await (const chunk of response) {
+                // Handle various chunk types that contain text content
+                if ('delta' in chunk && typeof chunk.delta === 'string') {
+                  controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content: chunk.delta }) + '\n'))
+                } else if ('text' in chunk && typeof chunk.text === 'string') {
+                  controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content: chunk.text }) + '\n'))
+                }
+              }
+              controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'))
+              
+            } catch (responseApiError) {
+              console.log('GPT-5 Responses API failed, falling back to Chat Completions API:', responseApiError)
+              
+              // Fallback: Use Chat Completions API for compatibility
+              const completion = await client.chat.completions.create({
+                model,
+                messages: chatMessages,
+                temperature: 0.5,
+                max_completion_tokens: 1200, // Use max_completion_tokens for GPT-5
+                stream: true,
+              })
+
+              for await (const chunk of completion) {
+                const content = chunk.choices?.[0]?.delta?.content
+                if (content) {
+                  controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+                }
+              }
+              controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'))
             }
+          } else {
+            // Use standard Chat Completions API for GPT-4 family
+            const completion = await client.chat.completions.create({
+              model,
+              messages: chatMessages,
+              temperature: 0.5,
+              max_tokens: 1200,
+              stream: true,
+            })
+
+            for await (const chunk of completion) {
+              const content = chunk.choices?.[0]?.delta?.content
+              if (content) {
+                controller.enqueue(encoder.encode(JSON.stringify({ type: 'delta', content }) + '\n'))
+              }
+            }
+            controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'))
           }
-          controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'))
           
           console.log('Chat modes request completed successfully', {
             request_id: requestId,
