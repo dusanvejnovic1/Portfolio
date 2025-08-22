@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const useSSE = acceptsSSE(request);
     console.log('Response format:', { requestId, useSSE });
 
-    const model = typeof body.model === 'string' ? body.model : process.env.DEFAULT_MODEL || 'gpt-5-mini';
+    const model = typeof body.model === 'string' ? body.model : process.env.DEFAULT_MODEL || 'gpt-5';
     console.log('Using model:', { requestId, model, requested: body.model });
 
     const client = openai();
