@@ -8,6 +8,7 @@ export default function ChatMode({ systemPrompt }: { systemPrompt: string }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const bufferRef = useRef('')
 
   async function onSend(e?: React.FormEvent) {
@@ -19,6 +20,7 @@ export default function ChatMode({ systemPrompt }: { systemPrompt: string }) {
     setMessages(newMsgs)
     setInput('')
     setLoading(true)
+    setError(null)
 
     const assistantIndex = newMsgs.length
     setMessages(prev => [...prev, { role: 'assistant', content: '' }])
@@ -30,12 +32,16 @@ export default function ChatMode({ systemPrompt }: { systemPrompt: string }) {
         body: JSON.stringify({ systemPrompt, messages: newMsgs }),
         onMessage: (m: unknown) => {
           if (typeof m === 'object' && m !== null && 'type' in m) {
-            const msg = m as { type: string; content?: string }
+            const msg = m as { type: string; content?: string; error?: string }
             if (msg?.type === 'delta' && typeof msg.content === 'string') {
               bufferRef.current += msg.content
               setMessages(prev => prev.map((message, idx) => 
                 idx === assistantIndex ? { ...message, content: bufferRef.current } : message
               ))
+            } else if (msg?.type === 'error' && msg.error) {
+              setError(msg.error)
+              // Remove the empty assistant message
+              setMessages(prev => prev.slice(0, -1))
             }
           }
         },
@@ -43,14 +49,20 @@ export default function ChatMode({ systemPrompt }: { systemPrompt: string }) {
           bufferRef.current = ''
           setLoading(false)
         },
-        onError: () => {
+        onError: (err) => {
           bufferRef.current = ''
           setLoading(false)
+          setError(err.message || 'Failed to send message. Please try again.')
+          // Remove the empty assistant message
+          setMessages(prev => prev.slice(0, -1))
         }
       })
-    } catch {
+    } catch (err) {
       bufferRef.current = ''
       setLoading(false)
+      setError(err instanceof Error ? err.message : 'Failed to send message. Please try again.')
+      // Remove the empty assistant message
+      setMessages(prev => prev.slice(0, -1))
     }
   }
 
@@ -67,7 +79,32 @@ export default function ChatMode({ systemPrompt }: { systemPrompt: string }) {
             </div>
           </div>
         ))}
-        {messages.length === 0 && (
+        {loading && (
+          <div className="text-left">
+            <div className="inline-block bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg">
+              <span className="inline-block w-2 h-2 bg-current rounded-full animate-bounce mr-1"></span>
+              <span className="inline-block w-2 h-2 bg-current rounded-full animate-bounce mr-1" style={{animationDelay: '0.1s'}}></span>
+              <span className="inline-block w-2 h-2 bg-current rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></span>
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="text-center">
+            <div className="inline-block bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg border border-red-200 dark:border-red-800">
+              <div className="flex items-center gap-2">
+                <span>⚠️</span>
+                <span>{error}</span>
+                <button 
+                  onClick={() => setError(null)}
+                  className="ml-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {messages.length === 0 && !loading && !error && (
           <div className="text-center text-gray-500 dark:text-gray-400 mt-16">
             <p>Start a conversation by typing your question below.</p>
           </div>

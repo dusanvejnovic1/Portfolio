@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Mode } from '@/types/modes'
 
 interface SidebarProps {
@@ -10,19 +12,29 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen = false, onToggle, currentMode = 'Chat', onModeChange }: SidebarProps) {
+  const pathname = usePathname()
   const conversations = [
     { id: 1, title: 'Math Problem Help', timestamp: '2 hours ago' },
     { id: 2, title: 'Science Concepts', timestamp: 'Yesterday' },
     { id: 3, title: 'History Discussion', timestamp: '2 days ago' },
   ]
 
-  const modes: Array<{name: Mode, icon: string, description: string}> = [
-    { name: 'Chat', icon: '💬', description: 'AI tutoring with hints' },
-    { name: 'Curriculum', icon: '📚', description: 'Structured learning plans' },
-    { name: 'Assignment', icon: '📝', description: 'Hands-on projects' },
-    { name: 'Assessment', icon: '📊', description: 'Score submissions' },
-    { name: 'Resources', icon: '🔍', description: 'Find learning materials' },
+  const modes: Array<{name: Mode, icon: string, description: string, href: string}> = [
+    { name: 'Chat', icon: '💬', description: 'AI tutoring with hints', href: '/' },
+    { name: 'Curriculum', icon: '📚', description: 'Structured learning plans', href: '/' },
+    { name: 'Assignment', icon: '📝', description: 'Hands-on projects', href: '/modes/assignment' },
+    { name: 'Assessment', icon: '📊', description: 'Score submissions', href: '/modes/assessment' },
+    { name: 'Resources', icon: '🔍', description: 'Find learning materials', href: '/modes/resources' },
   ]
+
+  const getCurrentMode = (): Mode => {
+    if (pathname === '/modes/assignment') return 'Assignment'
+    if (pathname === '/modes/assessment') return 'Assessment' 
+    if (pathname === '/modes/resources') return 'Resources'
+    return currentMode
+  }
+
+  const effectiveMode = getCurrentMode()
 
   if (!isOpen) {
     return (
@@ -67,42 +79,95 @@ export default function Sidebar({ isOpen = false, onToggle, currentMode = 'Chat'
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Learning Mode</h3>
           <div className="space-y-1">
-            {modes.map((mode) => (
-              <button
-                key={mode.name}
-                onClick={() => onModeChange?.(mode.name)}
-                className={`w-full text-left p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
-                  currentMode === mode.name
-                    ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="text-lg">{mode.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className={`font-medium text-sm ${
-                      currentMode === mode.name
-                        ? 'text-blue-900 dark:text-blue-100'
-                        : 'text-gray-900 dark:text-gray-100'
-                    }`}>
-                      {mode.name}
+            {modes.map((mode) => {
+              const isActive = effectiveMode === mode.name
+              const handleClick = () => {
+                if (mode.name === 'Chat' || mode.name === 'Curriculum') {
+                  // Use the old mode switching for Chat and Curriculum
+                  onModeChange?.(mode.name)
+                }
+                // For other modes, Link will handle navigation
+              }
+              
+              if (mode.name === 'Chat' || mode.name === 'Curriculum') {
+                // Use button for modes handled by AppLayout
+                return (
+                  <button
+                    key={mode.name}
+                    onClick={handleClick}
+                    className={`w-full text-left p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                      isActive
+                        ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-lg">{mode.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className={`font-medium text-sm ${
+                          isActive
+                            ? 'text-blue-900 dark:text-blue-100'
+                            : 'text-gray-900 dark:text-gray-100'
+                        }`}>
+                          {mode.name}
+                        </div>
+                        <div className={`text-xs mt-0.5 ${
+                          isActive
+                            ? 'text-blue-700 dark:text-blue-300'
+                            : 'text-gray-500 dark:text-gray-400'
+                        }`}>
+                          {mode.description}
+                        </div>
+                      </div>
                     </div>
-                    <div className={`text-xs mt-0.5 ${
-                      currentMode === mode.name
-                        ? 'text-blue-700 dark:text-blue-300'
-                        : 'text-gray-500 dark:text-gray-400'
-                    }`}>
-                      {mode.description}
+                  </button>
+                )
+              } else {
+                // Use Link for chat mode pages
+                return (
+                  <Link
+                    key={mode.name}
+                    href={mode.href}
+                    onClick={() => {
+                      // Auto-close sidebar on mobile after navigation
+                      if (window.innerWidth < 768) {
+                        onToggle?.()
+                      }
+                    }}
+                    className={`block w-full text-left p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                      isActive
+                        ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-lg">{mode.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className={`font-medium text-sm ${
+                          isActive
+                            ? 'text-blue-900 dark:text-blue-100'
+                            : 'text-gray-900 dark:text-gray-100'
+                        }`}>
+                          {mode.name}
+                        </div>
+                        <div className={`text-xs mt-0.5 ${
+                          isActive
+                            ? 'text-blue-700 dark:text-blue-300'
+                            : 'text-gray-500 dark:text-gray-400'
+                        }`}>
+                          {mode.description}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </button>
-            ))}
+                  </Link>
+                )
+              }
+            })}
           </div>
         </div>
 
         {/* Conversations List - Only show for Chat mode */}
-        {currentMode === 'Chat' && (
+        {effectiveMode === 'Chat' && (
           <>
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
               <button className="w-full py-2 px-3 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
@@ -132,10 +197,10 @@ export default function Sidebar({ isOpen = false, onToggle, currentMode = 'Chat'
         )}
 
         {/* Mode-specific content placeholder */}
-        {currentMode !== 'Chat' && (
+        {effectiveMode !== 'Chat' && (
           <div className="flex-1 overflow-y-auto p-4">
             <div className="text-center text-gray-500 dark:text-gray-400 text-sm">
-              {currentMode} mode selected
+              {effectiveMode} mode selected
             </div>
           </div>
         )}
