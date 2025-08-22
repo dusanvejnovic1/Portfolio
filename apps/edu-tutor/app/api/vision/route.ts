@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { openai, moderateContent, VISION_MODEL, resolveModel } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { VISION_SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
+import { VISION_SYSTEM_PROMPT, LEARNING_MODE_PROMPTS, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
 // Use Node.js runtime for file processing
 export const runtime = 'nodejs'
@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     const prompt = formData.get('prompt') as string || ''
     const mode = formData.get('mode') as string || 'hints'
     const requestedModel = formData.get('model') as string || ''
+    const learningMode = formData.get('learningMode') as string || 'general'
     const imageFile = formData.get('image') as File
     
     // Resolve model - for vision, prefer vision-capable models but allow fallback
@@ -148,8 +149,15 @@ export async function POST(request: NextRequest) {
     const base64Image = Buffer.from(imageBuffer).toString('base64')
     const imageDataUrl = `data:${imageFile.type};base64,${base64Image}`
 
-    // Prepare system prompt based on mode
+    // Prepare system prompt based on learning mode and hint/solution mode
     let systemPrompt = VISION_SYSTEM_PROMPT
+    
+    // Add learning mode specific instructions
+    if (learningMode && learningMode !== 'general' && LEARNING_MODE_PROMPTS[learningMode as keyof typeof LEARNING_MODE_PROMPTS]) {
+      systemPrompt += LEARNING_MODE_PROMPTS[learningMode as keyof typeof LEARNING_MODE_PROMPTS]
+    }
+    
+    // Add hint/solution mode instructions
     if (mode === 'hints') {
       systemPrompt += "\n\nProvide 1-2 helpful hints to guide the user's understanding, but don't give away the complete solution yet."
     } else if (mode === 'solution') {

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { openai, moderateContent, validateEnvironment, resolveModel, isGpt5 } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
+import { SYSTEM_PROMPT, LEARNING_MODE_PROMPTS, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
 // Use Node.js runtime for in-memory rate limiting
 export const runtime = 'nodejs'
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
     
     const body = await request.json()
-    const { message, mode = 'hints', model: requestedModel } = body
+    const { message, mode = 'hints', model: requestedModel, learningMode = 'general' } = body
     
     // Input validation
     if (!message || typeof message !== 'string') {
@@ -94,6 +94,16 @@ export async function POST(request: NextRequest) {
         { 
           error: 'Mode must be either "hints" or "solution"',
           code: 'invalid_mode'
+        },
+        { status: 400 }
+      )
+    }
+    
+    if (learningMode && !['general', 'curriculum', 'assignment', 'assessment', 'resources'].includes(learningMode)) {
+      return Response.json(
+        { 
+          error: 'Learning mode must be one of: general, curriculum, assignment, assessment, resources',
+          code: 'invalid_learning_mode'
         },
         { status: 400 }
       )
@@ -128,6 +138,13 @@ export async function POST(request: NextRequest) {
     
     // Prepare system prompt based on mode
     let systemPrompt = SYSTEM_PROMPT
+    
+    // Add learning mode specific instructions
+    if (learningMode && learningMode !== 'general' && LEARNING_MODE_PROMPTS[learningMode as keyof typeof LEARNING_MODE_PROMPTS]) {
+      systemPrompt += LEARNING_MODE_PROMPTS[learningMode as keyof typeof LEARNING_MODE_PROMPTS]
+    }
+    
+    // Add hint/solution mode instructions
     if (mode === 'hints') {
       systemPrompt += `\n\nIMPORTANT: You are currently in "hints" mode. Provide 1-2 helpful hints but DO NOT give the complete solution or final answer. Guide the student's thinking process.`
     } else if (mode === 'solution') {

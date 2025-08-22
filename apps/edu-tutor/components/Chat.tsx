@@ -24,6 +24,8 @@ interface ChatProps {
   selectedModel?: string
 }
 
+type LearningMode = 'general' | 'curriculum' | 'assignment' | 'assessment' | 'resources'
+
 export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChange, selectedModel }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -35,6 +37,7 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
   const [lastUserMessage, setLastUserMessage] = useState('')
   const [currentImage, setCurrentImage] = useState<File | null>(null)
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium')
+  const [learningMode, setLearningMode] = useState<LearningMode>('general')
   
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -94,6 +97,7 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
           formData.append('prompt', message)
         }
         formData.append('mode', mode)
+        formData.append('learningMode', learningMode)
         if (selectedModel) {
           formData.append('model', selectedModel)
         }
@@ -106,7 +110,12 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
         })
       } else {
         // Use regular chat API for text-only
-        const requestBody: Record<string, unknown> = { message, mode, model: selectedModel }
+        const requestBody: Record<string, unknown> = { 
+          message, 
+          mode, 
+          model: selectedModel,
+          learningMode // Add learning mode to the request
+        }
         
         // Add reasoning for GPT-5 models
         if (isGpt5Model) {
@@ -216,7 +225,7 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
       addMessage(`Error: ${errorMessage}`, false)
       setStreamingState({ isStreaming: false, currentContent: '' })
     }
-  }, [streamingState.isStreaming, addMessage, lastUserMessage, selectedModel, isGpt5Model, reasoningEffort])
+  }, [streamingState.isStreaming, addMessage, lastUserMessage, selectedModel, isGpt5Model, reasoningEffort, learningMode])
   
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -278,6 +287,26 @@ export default function Chat({ hintsMode: propHintsMode = true, onHintsModeChang
               label="Hints mode"
               disabled={streamingState.isStreaming}
             />
+            
+            {/* Learning Mode Selector */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="learning-mode" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Mode:
+              </label>
+              <select
+                id="learning-mode"
+                value={learningMode}
+                onChange={(e) => setLearningMode(e.target.value as LearningMode)}
+                disabled={streamingState.isStreaming}
+                className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 disabled:opacity-50"
+              >
+                <option value="general">General Tutoring</option>
+                <option value="curriculum">Curriculum Planning</option>
+                <option value="assignment">Assignment Creation</option>
+                <option value="assessment">Assessment & Grading</option>
+                <option value="resources">Resource Discovery</option>
+              </select>
+            </div>
             
             {/* Reasoning controls for GPT-5 models */}
             {isGpt5Model && (
