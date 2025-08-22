@@ -1,9 +1,9 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import ImageUpload from '../components/ImageUpload'
 
-// Mock FileReader
+// Mock FileReader properly
 global.FileReader = class {
   onload: ((event: any) => void) | null = null
   
