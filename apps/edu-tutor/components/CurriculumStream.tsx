@@ -228,7 +228,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         onError('Failed to export curriculum to markdown')
       }
     }
-  }, [state.days, request, onError])
+  }, [state.days, request, onError]);
 
   return (
     <div className="max-w-4xl mx-auto p-6">
