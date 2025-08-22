@@ -2,28 +2,7 @@
 
 import React, { useState, useRef, useCallback } from "react";
 import { fetchNDJSONStream } from "../lib/sse";
-
-export interface CurriculumDay {
-  day: number;
-  title: string;
-  summary: string;
-  goals: string[];
-  theorySteps: string[];
-  handsOnSteps: string[];
-  resources: Array<{
-    title: string;
-    url: string;
-    type: string;
-  }>;
-  assignment: string;
-  checkForUnderstanding: string[];
-  // Add other fields as needed!
-}
-
-export interface CurriculumPlan {
-  days: CurriculumDay[];
-  totalDays: number;
-}
+import { CurriculumDay, CurriculumPlan } from "@/types/modes"; // <-- Import shared types
 
 type CurriculumStreamMessage =
   | { type: "day"; day: CurriculumDay }
@@ -45,6 +24,7 @@ interface CurriculumStreamProps {
     level: string;
     durationDays: number;
     goals?: string[];
+    outline?: any; // You may want to use a specific type if available
   };
   onComplete?: (plan: CurriculumPlan) => void;
   onError?: (error: string) => void;
@@ -116,9 +96,15 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
               }));
               if (onComplete) {
                 // Use the ref for latest days
+                // Return a full CurriculumPlan according to your canonical type
                 onComplete({
+                  topic: request.topic,
+                  level: request.level,
+                  durationDays: request.durationDays,
+                  goals: request.goals ?? [],
+                  outline: request.outline ?? undefined,
                   days: daysRef.current,
-                  totalDays: state.totalDays,
+                  totalDays: request.durationDays,
                 });
               }
             } else if (message.type === "error") {
@@ -152,8 +138,13 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
           }));
           if (onComplete) {
             onComplete({
+              topic: request.topic,
+              level: request.level,
+              durationDays: request.durationDays,
+              goals: request.goals ?? [],
+              outline: request.outline ?? undefined,
               days: daysRef.current,
-              totalDays: state.totalDays,
+              totalDays: request.durationDays,
             });
           }
         },
@@ -168,7 +159,7 @@ const CurriculumStream: React.FC<CurriculumStreamProps> = ({
       }));
       if (onError) onError(errorMsg);
     }
-  }, [request, onComplete, onError, state.totalDays]);
+  }, [request, onComplete, onError]);
 
   return (
     <div>
