@@ -21,14 +21,24 @@ export default function ModelSelector({ selectedModel = 'gpt-4o-mini', onModelCh
   const models: ModelOption[] = [
     {
       id: 'gpt-4o-mini',
-      name: 'GPT-4 Mini',
+      name: 'GPT-4o Mini',
       description: 'Fast and efficient for most tasks',
       isRecommended: true
     },
     {
       id: 'gpt-4o',
-      name: 'GPT-4',
-      description: 'Best quality for complex analysis'
+      name: 'GPT-4o',
+      description: 'Higher quality for complex reasoning'
+    },
+    {
+      id: 'gpt-5-mini',
+      name: 'GPT-5 Mini',
+      description: 'Next-gen model with reasoning'
+    },
+    {
+      id: 'gpt-5',
+      name: 'GPT-5',
+      description: 'Advanced reasoning and analysis'
     }
   ]
 

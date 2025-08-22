@@ -8,7 +8,7 @@ import ModelSelector from '@/components/ModelSelector'
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini')
+  const [selectedModel, setSelectedModel] = useState('gpt-5-mini')
   const [hintsMode, setHintsMode] = useState(true)
 
   const toggleSidebar = () => {
@@ -44,7 +44,11 @@ export default function AppLayout() {
         
         {/* Main Chat Area */}
         <div className="h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)]">
-          <Chat hintsMode={hintsMode} onHintsModeChange={setHintsMode} />
+          <Chat 
+            hintsMode={hintsMode} 
+            onHintsModeChange={setHintsMode} 
+            selectedModel={selectedModel}
+          />
         </div>
       </div>
     </div>

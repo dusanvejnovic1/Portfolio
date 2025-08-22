@@ -15,7 +15,13 @@
 import https from 'https';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const MODEL = process.env.MODEL || 'gpt-4o-mini';
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-4o-mini';
+const MODEL = process.env.MODEL || DEFAULT_MODEL;
+
+// Helper to detect if a model is GPT-5
+function isGpt5(model) {
+  return /^gpt-5/.test(model);
+}
 
 if (!OPENAI_API_KEY) {
   console.error('❌ OPENAI_API_KEY environment variable is required');
@@ -24,10 +30,25 @@ if (!OPENAI_API_KEY) {
 }
 
 console.log(`🔍 Testing OpenAI API connectivity with model: ${MODEL}`);
+if (MODEL !== DEFAULT_MODEL) {
+  console.log(`📝 Using custom model (DEFAULT_MODEL: ${DEFAULT_MODEL})`);
+}
 
 const startTime = Date.now();
+const isGpt5Model = isGpt5(MODEL);
+const endpoint = isGpt5Model ? 'responses' : 'chat.completions';
+const apiPath = isGpt5Model ? '/v1/responses' : '/v1/chat/completions';
 
-const postData = JSON.stringify({
+console.log(`🔗 Using ${endpoint} API (${apiPath})`);
+if (isGpt5Model) {
+  console.log('🎯 Using Responses API for GPT-5 model');
+}
+
+const postData = JSON.stringify(isGpt5Model ? {
+  model: MODEL,
+  input: 'Say \'pong\'.',
+  stream: false
+} : {
   model: MODEL,
   messages: [
     { role: 'user', content: 'Say \'pong\'.' }
@@ -38,7 +59,7 @@ const postData = JSON.stringify({
 const options = {
   hostname: 'api.openai.com',
   port: 443,
-  path: '/v1/chat/completions',
+  path: apiPath,
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${OPENAI_API_KEY}`,
@@ -62,10 +83,31 @@ const req = https.request(options, (res) => {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       try {
         const response = JSON.parse(data);
-        const messageContent = response.choices?.[0]?.message?.content;
+        let messageContent;
+        
+        if (isGpt5Model) {
+          // For GPT-5 Responses API
+          if (response.output && Array.isArray(response.output)) {
+            for (const item of response.output) {
+              if (item.type === 'message' && item.content) {
+                for (const content of item.content) {
+                  if (content.type === 'output_text' && content.text) {
+                    messageContent = content.text;
+                    break;
+                  }
+                }
+              }
+              if (messageContent) break;
+            }
+          }
+        } else {
+          // For Chat Completions API
+          messageContent = response.choices?.[0]?.message?.content;
+        }
         
         if (messageContent) {
-          console.log(`✅ event=openai_diagnostic_ok status=${res.statusCode} model=${MODEL} latency=${latency}s`);
+          console.log(`✅ event=openai_diagnostic_ok status=${res.statusCode} model=${MODEL} endpoint=${endpoint} latency=${latency}s`);
+          console.log(`{ "ok": true, "model": "${MODEL}", "endpoint": "${endpoint}", "status": ${res.statusCode} }`);
           console.log('🎉 OpenAI API connectivity test passed!');
           process.exit(0);
         } else {
@@ -79,7 +121,8 @@ const req = https.request(options, (res) => {
         process.exit(1);
       }
     } else {
-      console.log(`❌ event=openai_diagnostic_failed status=${res.statusCode} model=${MODEL} latency=${latency}s`);
+      console.log(`❌ event=openai_diagnostic_failed status=${res.statusCode} model=${MODEL} endpoint=${endpoint} latency=${latency}s`);
+      console.log(`{ "ok": false, "model": "${MODEL}", "endpoint": "${endpoint}", "status": ${res.statusCode} }`);
       
       try {
         const errorResponse = JSON.parse(data);
@@ -100,7 +143,8 @@ const req = https.request(options, (res) => {
 
 req.on('error', (error) => {
   const latency = Math.round((Date.now() - startTime) / 1000);
-  console.log(`❌ event=openai_diagnostic_failed status=network_error model=${MODEL} latency=${latency}s`);
+  console.log(`❌ event=openai_diagnostic_failed status=network_error model=${MODEL} endpoint=${endpoint} latency=${latency}s`);
+  console.log(`{ "ok": false, "model": "${MODEL}", "endpoint": "${endpoint}", "status": "network_error" }`);
   console.log(`Network error: ${error.message}`);
   process.exit(1);
 });
