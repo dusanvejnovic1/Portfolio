@@ -51,6 +51,69 @@ export interface CurriculumPlan {
   }
 }
 
+// Unified Streaming Event Types
+export type CurriculumStreamEventType = 'progress' | 'day' | 'error' | 'done' | 'full_plan'
+
+export interface CurriculumProgressEvent {
+  type: 'progress'
+  value: string
+}
+
+export interface CurriculumDayEvent {
+  type: 'day'
+  day: CurriculumDay
+}
+
+export interface CurriculumErrorEvent {
+  type: 'error'
+  error: string
+}
+
+export interface CurriculumDoneEvent {
+  type: 'done'
+  totalGenerated?: number
+}
+
+export interface CurriculumFullPlanEvent {
+  type: 'full_plan'
+  plan: {
+    days: CurriculumDay[]
+  }
+}
+
+export type CurriculumStreamEvent = 
+  | CurriculumProgressEvent 
+  | CurriculumDayEvent 
+  | CurriculumErrorEvent 
+  | CurriculumDoneEvent 
+  | CurriculumFullPlanEvent
+
+// API Request/Response Types
+export interface CurriculumOutlineRequest {
+  topic: string
+  level: LearningLevel
+  durationDays: number
+  constraints?: CurriculumConstraints
+}
+
+export interface CurriculumOutlineResponse {
+  outline: CurriculumWeek[]
+  suggestedAdjustments?: string[]
+}
+
+export interface CurriculumGenerateRequest {
+  topic: string
+  level: LearningLevel
+  durationDays: number
+  batch: {
+    startDay: number
+    endDay: number
+  }
+  outline?: CurriculumWeek[]
+  useWeb?: boolean
+  retrievalContext?: Record<string, unknown>
+}
+
 // Assignment Types
 export interface RubricCriterion {
   name: string
@@ -127,44 +190,11 @@ export interface ResourceSearchMeta {
   verified?: boolean // Whether results came from verified search provider
 }
 
-// API Request/Response Types
-export interface CurriculumOutlineRequest {
-  topic: string
-  level: LearningLevel
-  durationDays: number
-  constraints?: CurriculumConstraints
-}
-
-export interface CurriculumOutlineResponse {
-  outline: CurriculumWeek[]
-  suggestedAdjustments?: string[]
-}
-
-export interface CurriculumGenerateRequest {
-  topic: string
-  level: LearningLevel
-  durationDays: number
-  batch: {
-    startDay: number
-    endDay: number
-  }
-  outline?: CurriculumWeek[]
-  useWeb?: boolean
-  retrievalContext?: any
-}
-
-export interface CurriculumGenerateResponse {
-  type: 'progress' | 'day' | 'error'
-  value?: string
-  day?: CurriculumDay
-  message?: string
-}
-
 export interface AssignmentGenerateRequest {
   topic: string
   difficulty: LearningLevel
   skills?: string[]
-  constraints?: any
+  constraints?: Record<string, unknown>
   timeBudgetHrs?: number
   guidanceStyle?: GuidanceStyle
 }

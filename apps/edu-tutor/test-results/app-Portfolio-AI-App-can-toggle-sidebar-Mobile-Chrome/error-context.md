@@ -1,0 +1,77 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "About" [ref=e3] [cursor=pointer]:
+    - /url: /about
+  - generic [ref=e4]:
+    - button "Open sidebar" [ref=e5]:
+      - img
+    - generic [ref=e7]:
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - button "Open sidebar" [ref=e11]:
+            - img
+          - heading "Portfolio AI" [level=1] [ref=e13]
+        - button "Select AI model" [ref=e16]:
+          - generic [ref=e17]:
+            - generic [ref=e18]: GPT-5 Nano
+            - generic [ref=e19]: Recommended
+          - img [ref=e20]
+        - generic [ref=e22]:
+          - generic [ref=e24]: Solution Mode
+          - button [ref=e26]:
+            - img
+      - generic [ref=e29]:
+        - generic [ref=e30]: "Model:"
+        - button "Select AI model" [ref=e32]:
+          - generic [ref=e33]:
+            - generic [ref=e34]: GPT-5 Nano
+            - generic [ref=e35]: Recommended
+          - img [ref=e36]
+      - generic [ref=e40]:
+        - generic [ref=e42]:
+          - generic [ref=e43]:
+            - generic [ref=e44]: Hints mode
+            - switch "Hints mode" [ref=e45]
+          - generic [ref=e46]:
+            - generic [ref=e47]: "Reasoning:"
+            - combobox "Reasoning:" [ref=e48]:
+              - option "Low"
+              - option "Medium" [selected]
+              - option "High"
+        - generic [ref=e50]:
+          - img [ref=e52]
+          - heading "Welcome to your AI tutor!" [level=2] [ref=e54]
+          - paragraph [ref=e55]: Ask any educational question or upload an image for analysis. Toggle 'Hints mode' to get guidance instead of direct answers.
+          - generic [ref=e56]:
+            - generic [ref=e57]: "Try asking:"
+            - generic [ref=e58]:
+              - generic [ref=e59]:
+                - generic [ref=e60]: "\"Explain photosynthesis\""
+                - generic [ref=e61]: Get step-by-step explanations
+              - generic [ref=e62]:
+                - generic [ref=e63]: Upload a math problem
+                - generic [ref=e64]: Get image analysis and hints
+          - generic [ref=e65]:
+            - generic [ref=e66]: JPEG & PNG Support
+            - generic [ref=e67]: Up to 500MB
+            - generic [ref=e68]: AI-Powered Analysis
+        - generic [ref=e69]: Ready to help with your studies
+        - generic [ref=e71]:
+          - generic [ref=e72]:
+            - generic [ref=e73]: Ask your educational question
+            - textbox "Ask your educational question" [ref=e74]
+            - generic [ref=e75]: 0/1500 characters
+          - generic [ref=e76]:
+            - generic [ref=e77]: Upload Image (Optional)
+            - generic [ref=e78]:
+              - generic [ref=e80]:
+                - img [ref=e81]
+                - generic [ref=e83]:
+                  - generic [ref=e84]: Click to upload
+                  - text: or drag and drop
+                - generic [ref=e85]: JPEG, PNG up to 500MB
+              - button "Choose File" [ref=e86]
+          - button "Send" [disabled] [ref=e88]
+```

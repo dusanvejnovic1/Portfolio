@@ -2,11 +2,8 @@
  * LLM wrapper to select between DEFAULT_MODEL and QUALITY_MODEL
  */
 
-import { openai, isGpt5 } from './openai'
-
-export const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
-export const QUALITY_MODEL = process.env.QUALITY_MODEL || 'gpt-4o'
-export const VISION_MODEL = process.env.VISION_MODEL || 'gpt-4o'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { client as openaiClient, openai as openaiGetter, isGpt5, DEFAULT_MODEL, QUALITY_MODEL, VISION_MODEL } from './openai'
 
 /**
  * Get the appropriate model for a given task
@@ -43,7 +40,21 @@ export async function createChatCompletion(
   } = options
 
   const selectedModel = getModelForTask(model)
-  const client = openai() // Call the function to get the client
+  // Prefer the exported client singleton. If that proxy throws (e.g. in tests where
+  // the real client isn't constructed), fall back to the legacy openai() getter which
+  // tests may mock.
+  let client: any
+  try {
+  client = openaiClient as any
+  // attempt a harmless property access to trigger proxy errors now if any
+  void (client && client.chat)
+  } catch (e) {
+    if (typeof openaiGetter === 'function') {
+      client = openaiGetter()
+    } else {
+      throw e
+    }
+  }
 
   // Handle GPT-5 models using Responses API
   if (isGpt5(selectedModel)) {
@@ -53,8 +64,8 @@ export async function createChatCompletion(
     
     // Try Responses API first, then fallback to Chat Completions
     try {
-      // Check if responses API exists
-      if (!client.responses || typeof client.responses.create !== 'function') {
+  // Check if responses API exists
+  if (!client.responses || typeof client.responses.create !== 'function') {
         throw new Error('Responses API not available in current SDK version')
       }
       
@@ -71,7 +82,7 @@ export async function createChatCompletion(
       })
       
       // Use Responses API for GPT-5
-      const response = await client.responses.create({
+  const response = await client.responses.create({
         model: selectedModel,
         input: combinedInput.trim(),
         stream: false
@@ -102,11 +113,11 @@ export async function createChatCompletion(
     } catch (error) {
       console.log(`Responses API failed for ${selectedModel}, falling back to Chat Completions API:`, error)
       
-      // Fallback to Chat Completions API
-      return client.chat.completions.create({
+  // Fallback to Chat Completions API
+  return (client as any).chat.completions.create({
         model: selectedModel,
         messages,
-        max_tokens: maxTokens,
+        ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens } : {}),
         temperature,
         stream
       })
@@ -114,10 +125,10 @@ export async function createChatCompletion(
   }
 
   // Use Chat Completions API for GPT-4 family
-  return client.chat.completions.create({
+  return (client as any).chat.completions.create({
     model: selectedModel,
     messages,
-    max_tokens: maxTokens,
+    ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens } : {}),
     temperature,
     stream
   })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Chat from '@/components/Chat'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
@@ -13,9 +13,27 @@ import { Mode } from '@/types/modes'
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('gpt-5-mini')
+  const [selectedModel, setSelectedModel] = useState('gpt-5-nano')
   const [hintsMode, setHintsMode] = useState(false)
   const [currentMode, setCurrentMode] = useState<Mode>('Chat')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // SSR-safe mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+
+    // Check on mount
+    checkMobile()
+
+    // Add resize listener
+    window.addEventListener('resize', checkMobile)
+
+    return () => {
+      window.removeEventListener('resize', checkMobile)
+    }
+  }, [])
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -24,7 +42,7 @@ export default function AppLayout() {
   const handleModeChange = (mode: Mode) => {
     setCurrentMode(mode)
     // Auto-close sidebar on mobile after mode selection
-    if (window.innerWidth < 768) {
+    if (isMobile) {
       setSidebarOpen(false)
     }
   }

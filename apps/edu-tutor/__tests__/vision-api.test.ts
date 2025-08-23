@@ -38,7 +38,7 @@ describe('Vision API', () => {
       body: formData
     })
     
-    const response = await POST(request)
+  const response = await POST(request as unknown as import('next/server').NextRequest)
     const data = await response.json()
     
     expect(response.status).toBe(400)
@@ -55,7 +55,7 @@ describe('Vision API', () => {
       body: formData
     })
     
-    const response = await POST(request)
+  const response = await POST(request as unknown as import('next/server').NextRequest)
     const data = await response.json()
     
     expect(response.status).toBe(400)
@@ -75,7 +75,7 @@ describe('Vision API', () => {
       body: formData
     })
     
-    const response = await POST(request)
+  const response = await POST(request as unknown as import('next/server').NextRequest)
     const data = await response.json()
     
     expect(response.status).toBe(400)
@@ -93,7 +93,7 @@ describe('Vision API', () => {
       body: formData
     })
     
-    const response = await POST(request)
+  const response = await POST(request as unknown as import('next/server').NextRequest)
     const data = await response.json()
     
     expect(response.status).toBe(400)
@@ -111,8 +111,8 @@ describe('Vision API', () => {
       body: formData
     })
     
-    const response = await POST(request)
-    const data = await response.json()
+  const response = await POST(request as unknown as import('next/server').NextRequest)
+  const data = await response.json()
     
     expect(response.status).toBe(400)
     expect(data.error).toBe('Prompt too long. Please limit to 1500 characters.')

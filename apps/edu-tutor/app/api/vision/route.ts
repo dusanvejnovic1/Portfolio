@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
-import { openai, moderateContent, VISION_MODEL, resolveModel } from '@/lib/openai'
+import { moderateContent, VISION_MODEL, resolveModel } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { VISION_SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -174,11 +174,8 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const messages: Array<
-            | { role: 'system'; content: string }
-            | { role: 'user'; content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail: 'high' | 'low' | 'auto' } }> }
-          > = [
-            { role: 'system' as const, content: systemPrompt }
+          const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+            { role: 'system', content: systemPrompt }
           ]
 
           // Add user message with image and optional prompt
@@ -209,18 +206,15 @@ export async function POST(request: NextRequest) {
             })
           }
 
+          // Serialize structured userContent into a string so the llm wrapper type matches
           messages.push({
             role: 'user' as const,
-            content: userContent
+            content: JSON.stringify(userContent)
           })
 
-          const completion = await openai().chat.completions.create({
-            model, // Use resolved model instead of hardcoded 'gpt-4o'
-            messages,
-            temperature: 0.5,
-            max_tokens: 800,
-            stream: true,
-          })
+          const { createStreamingChatCompletion } = await import('@/lib/llm')
+          // The llm wrapper accepts a flexible messages shape; narrow to unknown and handle both async iterator and single response paths
+          const completion = await createStreamingChatCompletion(messages, { model: 'default', maxTokens: 800, temperature: 0.5 })
           
           // Send periodic keepalive comments
           const keepAliveInterval = setInterval(() => {
@@ -233,11 +227,44 @@ export async function POST(request: NextRequest) {
           
           let fullResponse = ''
           
-          for await (const chunk of completion) {
-            const content = chunk.choices[0]?.delta?.content
-            if (content) {
-              fullResponse += content
-              const data = JSON.stringify({ delta: content })
+          if (Symbol.asyncIterator in Object(completion)) {
+            for await (const chunk of completion as AsyncIterable<unknown>) {
+              try {
+                const obj = chunk as Record<string, unknown>
+                const choices = obj['choices'] as unknown
+                if (Array.isArray(choices) && choices.length > 0) {
+                  const first = choices[0] as Record<string, unknown>
+                  const delta = first['delta'] as unknown
+                  let content: string | undefined
+                  if (delta && typeof delta === 'object') {
+                    const c = (delta as Record<string, unknown>)['content']
+                    if (typeof c === 'string') content = c
+                  }
+                  if (!content) {
+                    const message = first['message'] as unknown
+                    if (message && typeof message === 'object') {
+                      const c = (message as Record<string, unknown>)['content']
+                      if (typeof c === 'string') content = c
+                    }
+                  }
+                  if (content) {
+                    fullResponse += content
+                    const data = JSON.stringify({ delta: content })
+                    controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                  }
+                }
+              } catch {
+                // ignore
+              }
+            }
+          } else {
+            const single = completion as unknown as Record<string, unknown>
+            const choices = single.choices as unknown as Array<Record<string, unknown>> | undefined
+            const message = choices?.[0]?.message as unknown as Record<string, unknown> | undefined
+            const raw = message?.content
+            if (raw && typeof raw === 'string') {
+              fullResponse += raw
+              const data = JSON.stringify({ delta: raw })
               controller.enqueue(encoder.encode(`data: ${data}\n\n`))
             }
           }

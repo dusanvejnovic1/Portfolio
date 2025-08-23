@@ -1,11 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { createErrorResponse } from '@/lib/schemas/curriculum'
 import crypto from 'crypto'
 import { generateResponse } from '@/lib/llm'
 import { preModerate, validateITContent } from '@/lib/moderation'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { CURRICULUM_OUTLINE_PROMPT, IT_TUTOR_SYSTEM_PROMPT } from '@/lib/prompts'
 import { CurriculumOutlineResponse } from '@/types/modes'
+
+// Helper: try to extract JSON from model text which may include markdown fences or extra text
+function tryParseJson(text: string): unknown | null {
+  if (!text || typeof text !== 'string') return null
+  const trimmed = text.trim()
+  // 1) Try direct parse
+  try { return JSON.parse(trimmed) } catch {
+    // ignore parse error
+  }
+
+  // 2) Look for fenced ```json ... ``` blocks
+  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed)
+  if (fenced && fenced[1]) {
+    try { return JSON.parse(fenced[1].trim()) } catch {
+      // ignore parse error
+    }
+  }
+
+  // 3) Fallback: find first '{' and last '}' and attempt to parse that slice
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = trimmed.slice(firstBrace, lastBrace + 1)
+    try { return JSON.parse(candidate) } catch {
+      // ignore parse error
+    }
+  }
+
+  // Nothing worked
+  return null
+}
 
 // Request validation schema
 const CurriculumOutlineRequestSchema = z.object({
@@ -23,13 +55,12 @@ const CurriculumOutlineRequestSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID()
-  console.log('Curriculum outline request:', { requestId, timestamp: new Date().toISOString() })
 
   try {
     // Check for OpenAI API key
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
-        { error: 'OpenAI API key not configured' },
+        createErrorResponse('OpenAI API key not configured', undefined, 'CONFIG_ERROR', requestId),
         { status: 500 }
       )
     }
@@ -41,7 +72,6 @@ export async function POST(request: NextRequest) {
     
     const rateLimit = checkRateLimit(clientIP)
     if (!rateLimit.allowed) {
-      console.log('Rate limit exceeded:', { requestId, ip: clientIP })
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
@@ -55,7 +85,6 @@ export async function POST(request: NextRequest) {
     // Content moderation
     const moderation = await preModerate(parsed.topic, { maxLength: 200 })
     if (!moderation.allowed) {
-      console.log('Content blocked by moderation:', { requestId, reason: moderation.reason })
       return NextResponse.json(
         { error: moderation.reason || 'Content not allowed' },
         { status: 400 }
@@ -65,7 +94,6 @@ export async function POST(request: NextRequest) {
     // IT content validation
     const validation = await validateITContent(parsed.topic, 'curriculum')
     if (!validation.isValid) {
-      console.log('IT content validation failed:', { requestId, errors: validation.errors })
       return NextResponse.json(
         { error: validation.errors[0] || 'Content validation failed' },
         { status: 400 }
@@ -106,41 +134,35 @@ Duration: ${parsed.durationDays} days${constraintsText}
 
 Focus on practical IT skills with progressive difficulty. Create a realistic learning progression.`
 
-    console.log('Generating outline:', { requestId, topic: parsed.topic, level: parsed.level, duration: parsed.durationDays })
-
     const response = await generateResponse(
       prompt,
       IT_TUTOR_SYSTEM_PROMPT,
       { model: 'quality', maxTokens: 4090, temperature: 0.3 }
     )
 
-    // Parse the JSON response
-    let outlineData: CurriculumOutlineResponse
-    try {
-      outlineData = JSON.parse(response.trim())
-      
-      // Validate response structure
-      if (!outlineData.outline || !Array.isArray(outlineData.outline)) {
-        throw new Error('Invalid outline structure')
-      }
-    } catch (parseError) {
-      console.error('Failed to parse outline response:', { requestId, error: parseError, response: response.substring(0, 200) })
+  // Parse the JSON response (the model may wrap JSON in markdown fences or include extra text)
+  const parsedCandidate = tryParseJson(response)
+    if (!parsedCandidate) {
       return NextResponse.json(
         { error: 'Failed to generate valid curriculum outline' },
         { status: 500 }
       )
     }
 
-    // Post-moderation on generated content
-    const outlineText = outlineData.outline.map(w => `${w.focus} ${w.notes || ''}`).join(' ')
-    const postModeration = await validateITContent(outlineText, 'curriculum')
-    
-    if (postModeration.warnings.length > 0) {
-      console.warn('Generated content warnings:', { requestId, warnings: postModeration.warnings })
+  const outlineData = parsedCandidate as CurriculumOutlineResponse
+
+    // Validate response structure
+    if (!outlineData.outline || !Array.isArray(outlineData.outline)) {
+      return NextResponse.json(
+        { error: 'Failed to generate valid curriculum outline' },
+        { status: 500 }
+      )
     }
 
-    console.log('Outline generated successfully:', { requestId, weeksCount: outlineData.outline.length })
-
+    // Post-moderation on generated content (validation only)
+    const outlineText = outlineData.outline.map(w => `${w.focus} ${w.notes || ''}`).join(' ')
+    await validateITContent(outlineText, 'curriculum')
+    
     return NextResponse.json(outlineData, { status: 200 })
 
   } catch (error) {

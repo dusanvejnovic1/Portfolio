@@ -9,6 +9,7 @@ import {
   LearningLevel 
 } from '@/types/modes'
 import CurriculumStream from '@/components/CurriculumStream'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 export default function CurriculumMode() {
   const [step, setStep] = useState<'setup' | 'outline' | 'generate' | 'view'>('setup')
@@ -22,6 +23,32 @@ export default function CurriculumMode() {
   const [outline, setOutline] = useState<CurriculumWeek[] | null>(null)
   const [outlineError, setOutlineError] = useState<string | null>(null)
   const [selectedDayIdx, setSelectedDayIdx] = useState(0)
+
+  // Parse a possibly blobbed focus string into sensible bullets
+  function parseFocusToBullets(text?: string): string[] {
+    if (!text) return []
+    const trimmed = text.trim()
+    if (!trimmed) return []
+
+    // 1) Split on explicit newlines first
+    let parts = trimmed.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+
+    // 2) Split on common separators (semicolons, bullets, dashes)
+    parts = trimmed.split(/\s*[;•–—-]\s*/).map(s => s.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+
+    // 3) Split on numbered or "Day N:" markers
+    // Insert a newline before 'Day X:' and before numbered lists like '1.' or '1)'
+    const numberedInserted = trimmed.replace(/(?=\bDay\s*\d+:)/g, '\n')
+                                 .replace(/(?=\b\d+\.)/g, '\n')
+                                 .replace(/(?=\b\d+\))/g, '\n')
+    parts = numberedInserted.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+
+    // Fallback: return the full text as a single item
+    return [trimmed]
+  }
 
   const handleSetupSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -39,8 +66,12 @@ export default function CurriculumMode() {
       
       if (outlineResponse.ok) {
         const outlineData = await outlineResponse.json()
-        setOutline(outlineData.outline)
-        setStep('outline')
+        if (outlineData.outline && Array.isArray(outlineData.outline)) {
+          setOutline(outlineData.outline)
+          setStep('outline')
+        } else {
+          throw new Error('Invalid outline response format')
+        }
       } else {
         // Handle error responses
         let errorMessage = `Request failed with status ${outlineResponse.status}`
@@ -70,8 +101,7 @@ export default function CurriculumMode() {
     setStep('view')
   }
 
-  const handleStreamError = (error: string) => {
-    console.error('Curriculum generation error:', error)
+  const handleStreamError = () => {
     // Could add toast notification here
   }
 
@@ -190,21 +220,35 @@ export default function CurriculumMode() {
           <div className="grid grid-cols-3 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-4">
             <div>Level: <span className="font-medium text-gray-900 dark:text-gray-100">{formData.level}</span></div>
             <div>Duration: <span className="font-medium text-gray-900 dark:text-gray-100">{formData.durationDays} days</span></div>
-            <div>Weeks: <span className="font-medium text-gray-900 dark:text-gray-100">{Math.ceil(formData.durationDays! / 7)}</span></div>
+            <div>Weeks: <span className="font-medium text-gray-900 dark:text-gray-100">{Math.ceil((formData.durationDays || 30) / 7)}</span></div>
           </div>
         </div>
 
         <div className="space-y-4 mb-6">
-          {outline?.map((week: CurriculumWeek, index: number) => (
-            <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                Week {week.week}: {week.focus}
-              </h3>
-              {week.notes && (
-                <p className="text-gray-600 dark:text-gray-400 text-sm">{week.notes}</p>
-              )}
-            </div>
-          ))}
+          {outline?.map((week: CurriculumWeek, index: number) => {
+            const bullets = parseFocusToBullets(week.focus)
+            return (
+              <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                  Week {week.week}:
+                </h3>
+
+                {bullets.length > 1 ? (
+                  <ul className="list-disc list-inside text-gray-700 dark:text-gray-300 mb-2">
+                    {bullets.map((b, i) => (
+                      <li key={i} className="text-sm">{b}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">{bullets[0]}</p>
+                )}
+
+                {week.notes && (
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">{week.notes}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         <div className="flex justify-end">
@@ -220,15 +264,25 @@ export default function CurriculumMode() {
   }
 
   if (step === 'generate') {
+    if (!formData.topic || !formData.level || !formData.durationDays || !outline) {
+      return (
+        <div className="max-w-4xl mx-auto p-6">
+          <div className="text-center text-red-600 dark:text-red-400">
+            Missing required data for generation. Please go back to setup.
+          </div>
+        </div>
+      )
+    }
+
     const generateRequest: CurriculumGenerateRequest = {
-      topic: formData.topic!,
-      level: formData.level!,
-      durationDays: formData.durationDays!,
+      topic: formData.topic,
+      level: formData.level,
+      durationDays: formData.durationDays,
       batch: {
         startDay: 1,
-        endDay: Math.min(7, formData.durationDays!) // Start with first 7 days maximum
+        endDay: Math.min(7, formData.durationDays) // Start with first 7 days maximum
       },
-      outline: outline || undefined
+      outline: outline
     }
 
     return (
@@ -244,11 +298,17 @@ export default function CurriculumMode() {
             ← Back to Outline
           </button>
         </div>
-        <CurriculumStream 
-          request={generateRequest}
-          onComplete={handleStreamComplete}
-          onError={handleStreamError}
-        />
+        <ErrorBoundary 
+          onError={() => {
+            setStep('setup') // Reset to setup on error
+          }}
+        >
+          <CurriculumStream 
+            request={generateRequest}
+            onComplete={handleStreamComplete}
+            onError={handleStreamError}
+          />
+        </ErrorBoundary>
       </div>
     )
   }
@@ -340,6 +400,25 @@ export default function CurriculumMode() {
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
                     {currentPlan.days[selectedDayIdx].assignment}
                   </p>
+
+                  {currentPlan.days[selectedDayIdx].resources && currentPlan.days[selectedDayIdx].resources.length > 0 && (
+                    <>
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Resources</h4>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {currentPlan.days[selectedDayIdx].resources.map((resource, idx) => (
+                          <a
+                            key={idx}
+                            href={resource.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                          >
+                            {resource.title}
+                          </a>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

@@ -20,8 +20,18 @@ export async function moderateContent(
   baseUrl?: string
 ): Promise<{ flagged: boolean; reason?: string }> {
   try {
-    const url = baseUrl ? `${baseUrl}/api/moderate` : '/api/moderate'
-    
+    // Build an absolute URL when running on the server because the
+    // global fetch in Node requires an absolute URL. Prefer an explicit
+    // baseUrl argument, then NEXT_PUBLIC_BASE_URL (if set), and finally
+    // fall back to localhost with the PORT env var (dev convenience).
+    const absoluteBase = baseUrl
+      ? baseUrl.replace(/\/$/, '')
+      : process.env.NEXT_PUBLIC_BASE_URL
+      ? process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '')
+      : `http://localhost:${process.env.PORT || 3000}`
+
+    const url = `${absoluteBase}/api/moderate`
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -232,22 +242,25 @@ export async function validateITContent(
 
   // Type-specific validation
   switch (type) {
-    case 'curriculum':
+    case 'curriculum': {
       if (content.length < 100) {
         warnings.push('Curriculum content seems very short')
       }
       break
-    case 'assignment':
+    }
+    case 'assignment': {
       if (!content.toLowerCase().includes('objective') && !content.toLowerCase().includes('goal')) {
         warnings.push('Assignment should include clear objectives')
       }
       break
-    case 'assessment':
+    }
+    case 'assessment': {
       if (!content.toLowerCase().includes('score') && !content.toLowerCase().includes('rating')) {
         warnings.push('Assessment should include scoring criteria')
       }
       break
-    case 'resources':
+    }
+    case 'resources': {
       // Check for URLs in resources
       const urls = content.match(/https?:\/\/[^\s]+/g) || []
       const invalidUrls = urls.filter(url => !sanitizeURL(url))
@@ -255,6 +268,7 @@ export async function validateITContent(
         errors.push(`Invalid URLs found: ${invalidUrls.join(', ')}`)
       }
       break
+    }
   }
 
   return {

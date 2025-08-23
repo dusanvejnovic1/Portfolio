@@ -1,0 +1,54 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8] [cursor=pointer]
+  - alert [ref=e11]: About Portfolio AI
+  - generic [ref=e13]:
+    - link "← Back to Chat" [ref=e15] [cursor=pointer]:
+      - /url: /
+    - heading "About Portfolio AI" [level=1] [ref=e16]
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - heading "What is this?" [level=2] [ref=e19]
+        - paragraph [ref=e20]: Educational Tutor is an AI-powered learning assistant designed to help students learn through guided discovery rather than providing direct answers. The app promotes deeper understanding by offering hints first, encouraging critical thinking, and providing step-by-step explanations.
+      - generic [ref=e21]:
+        - heading "How it works" [level=2] [ref=e22]
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - heading "Hints Mode (Default)" [level=3] [ref=e25]
+            - paragraph [ref=e26]: When hints mode is enabled, the tutor provides 1-2 helpful hints to guide your thinking without revealing the complete solution. This encourages you to work through problems and develop problem-solving skills.
+          - generic [ref=e27]:
+            - heading "Solution Mode" [level=3] [ref=e28]
+            - paragraph [ref=e29]: Toggle off hints mode or click "Show Solution" to receive complete explanations with step-by-step reasoning and final answers. This is helpful when you need to understand the full solution process.
+          - generic [ref=e30]:
+            - heading "Content Safety" [level=3] [ref=e31]
+            - paragraph [ref=e32]: All messages are automatically moderated to ensure appropriate educational content. The system will politely redirect inappropriate requests toward educational topics.
+      - generic [ref=e33]:
+        - heading "Privacy & Data" [level=2] [ref=e34]
+        - generic [ref=e35]:
+          - heading "Important Privacy Notice" [level=3] [ref=e36]
+          - list [ref=e37]:
+            - listitem [ref=e38]: This is an MVP (Minimum Viable Product) with no user accounts or data storage
+            - listitem [ref=e39]: Your messages are sent to OpenAI's API to generate responses
+            - listitem [ref=e40]: Conversations are not saved or stored on our servers
+            - listitem [ref=e41]: Do not enter personal, sensitive, or confidential information
+            - listitem [ref=e42]: Use the export/copy features to save important conversations locally
+      - generic [ref=e43]:
+        - heading "Usage Limits" [level=2] [ref=e44]
+        - paragraph [ref=e45]: To ensure fair usage for all users, there's a rate limit of 60 requests per minute per IP address. If you exceed this limit, please wait a moment before sending another message.
+        - paragraph [ref=e46]: Messages are limited to 1,500 characters to keep responses focused and cost-effective.
+      - generic [ref=e47]:
+        - heading "Best Practices" [level=2] [ref=e48]
+        - list [ref=e49]:
+          - listitem [ref=e50]: Start with hints mode to develop your problem-solving skills
+          - listitem [ref=e51]: Be specific in your questions for better guidance
+          - listitem [ref=e52]: Try working through hints before requesting the full solution
+          - listitem [ref=e53]: Use the export feature to save helpful explanations for later review
+          - listitem [ref=e54]: Focus on educational topics like math, science, history, literature, and more
+      - generic [ref=e55]:
+        - heading "Technical Details" [level=2] [ref=e56]
+        - paragraph [ref=e57]: This application is built with Next.js 14, uses OpenAI's GPT models for responses, and implements real-time streaming for a smooth user experience. It's designed to be fast, accessible, and mobile-friendly.
+        - paragraph [ref=e58]: Portfolio AI MVP - Focused on learning through guided discovery
+```

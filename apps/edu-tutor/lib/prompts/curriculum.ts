@@ -13,11 +13,25 @@ Key principles:
 - Design for active learning with clear objectives
 - Consider learner's environment and constraints
 
-When generating curriculum days, respond with NDJSON format (one JSON object per line) following this exact structure:
+IMPORTANT: Respond ONLY with NDJSON (one valid JSON object per line) using the following events. Do not include any text outside JSON lines.
 
-{"type": "day", "day": {"day": N, "title": "Day Title", "summary": "Brief summary", "goals": ["goal1", "goal2"], "theorySteps": ["step1", "step2"], "handsOnSteps": ["step1", "step2"], "resources": [{"title": "Resource Name", "url": "https://example.com", "type": "documentation"}], "assignment": "Assignment description", "checkForUnderstanding": ["question1", "question2"]}}
+Day event (emit one per generated day):
+{"type":"day","day":{"day":1,"title":"Day 1: Topic Title","summary":"Brief summary","goals":["goal1","goal2"],"theorySteps":["step1","step2"],"handsOnSteps":["step1","step2"],"resources":[{"title":"Resource Name","url":"https://example.com","type":"documentation"}],"assignment":"Assignment description","checkForUnderstanding":["question1","question2"]}}
 
-Generate one JSON object per day, then end with {"type": "done"} when complete.`
+Optional progress event:
+{"type":"progress","value":"Starting curriculum generation..."}
+
+Done event (after the last day):
+{"type":"done","totalGenerated":5}
+
+Error event (if something goes wrong):
+{"type":"error","error":"description of error"}
+
+Rules:
+- Exactly one JSON object per line (NDJSON)
+- Use the exact field names shown above
+- The day object MUST include: day, title, summary, goals, theorySteps, handsOnSteps, resources, assignment, checkForUnderstanding
+- Do not wrap events in arrays or add extra characters/text around JSON lines`
 }
 
 export function curriculumUserPrompt(
@@ -37,7 +51,9 @@ Focus: Practical, hands-on learning with real-world applications`
     prompt += `\nSpecific Learning Goals:\n${goals.map(goal => `- ${goal}`).join('\n')}`
   }
 
-  prompt += `\n\nGenerate each day sequentially with practical theory, hands-on exercises, and real resources. Keep each day focused and achievable. Structure content to build skills progressively from day 1 to day ${durationDays}.`
+  prompt += `\n\nGenerate each day sequentially with practical theory, hands-on exercises, and real resources. Keep each day focused and achievable. Structure content to build skills progressively from day 1 to day ${durationDays}.
+
+CRITICAL: Respond ONLY with NDJSON events as specified in the system prompt. Do not include any explanatory text or markdown.`
 
   return prompt
 }

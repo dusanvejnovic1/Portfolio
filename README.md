@@ -37,15 +37,15 @@ Vercel-optimized, .env.example provided, comprehensive README
 Isolated under apps/edu-tutor with clean file structure
 That PR established the MVP’s educational focus, streaming UX, moderation and rate-limiting safeguards, and the initial model defaults.
 
-Models used: 
+Models used:
 
 GPT 4.1 - general
 
-GPT 5 - prompt generation and pull requests
+GPT 5 - prompt generation and agent
 
-You can access a cloud stored version of this app on : https://portfolio-sepia-xi-98.vercel.app/ .
+You can access a cloud stored version of this app on : portfolio-git-main-dusanvejnovic1-1677s-projects.vercel.app
 
-Everything beyond this point is fully AI generated.
+Everything beyond this point is fully AI developed.
 
 ## Educational Tutor Sub-App
 

@@ -4,18 +4,20 @@ import { render, screen, waitFor } from '@testing-library/react'
 import ImageUpload from '../components/ImageUpload'
 
 // Mock FileReader properly
-global.FileReader = class {
-  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null
+globalThis.FileReader = class {
+  onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => void) | null = null
   
   readAsDataURL() {
     // Simulate successful file read
     setTimeout(() => {
       if (this.onload) {
-        this.onload.call(this, { target: { result: 'data:image/jpeg;base64,test' } } as ProgressEvent<FileReader>)
+        // Assert `this` as FileReader for TypeScript and construct event
+        const ev = { target: { result: 'data:image/jpeg;base64,test' } } as ProgressEvent<FileReader>
+        this.onload.call(this as unknown as FileReader, ev)
       }
     }, 0)
   }
-} as any
+} as unknown as typeof globalThis.FileReader
 
 describe('ImageUpload', () => {
   it('renders upload area when no image is selected', () => {

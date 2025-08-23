@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'Portfolio AI'
+
 export default function AboutPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -14,7 +16,7 @@ export default function AboutPage() {
         </div>
         
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-8">
-          About Educational Tutor
+          About {APP_NAME}
         </h1>
         
         <div className="prose prose-gray dark:prose-invert max-w-none">
@@ -104,7 +106,7 @@ export default function AboutPage() {
               fast, accessible, and mobile-friendly.
             </p>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Educational Tutor MVP - Focused on learning through guided discovery
+              {APP_NAME} MVP - Focused on learning through guided discovery
             </p>
           </section>
         </div>

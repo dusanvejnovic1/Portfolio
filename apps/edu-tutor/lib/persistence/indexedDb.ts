@@ -27,24 +27,24 @@ const STORES = {
 export function initDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
-    
+
     request.onerror = () => reject(request.error)
     request.onsuccess = () => resolve(request.result)
-    
+
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result
-      
+
       // Curriculum plans store
       if (!db.objectStoreNames.contains(STORES.PLANS)) {
-        const plansStore = db.createObjectStore(STORES.PLANS, { 
+        const plansStore = db.createObjectStore(STORES.PLANS, {
           keyPath: 'id',
-          autoIncrement: true 
+          autoIncrement: true
         })
         plansStore.createIndex('topic', 'topic', { unique: false })
         plansStore.createIndex('level', 'level', { unique: false })
         plansStore.createIndex('createdAt', 'createdAt', { unique: false })
       }
-      
+
       // Assignments store
       if (!db.objectStoreNames.contains(STORES.ASSIGNMENTS)) {
         const assignmentsStore = db.createObjectStore(STORES.ASSIGNMENTS, {
@@ -55,7 +55,7 @@ export function initDB(): Promise<IDBDatabase> {
         assignmentsStore.createIndex('difficulty', 'difficulty', { unique: false })
         assignmentsStore.createIndex('createdAt', 'createdAt', { unique: false })
       }
-      
+
       // Assessments store
       if (!db.objectStoreNames.contains(STORES.ASSESSMENTS)) {
         const assessmentsStore = db.createObjectStore(STORES.ASSESSMENTS, {
@@ -65,7 +65,7 @@ export function initDB(): Promise<IDBDatabase> {
         assessmentsStore.createIndex('createdAt', 'createdAt', { unique: false })
         assessmentsStore.createIndex('overallScore', 'result.overallScore', { unique: false })
       }
-      
+
       // Resources queries store
       if (!db.objectStoreNames.contains(STORES.RESOURCES)) {
         const resourcesStore = db.createObjectStore(STORES.RESOURCES, {
@@ -75,7 +75,7 @@ export function initDB(): Promise<IDBDatabase> {
         resourcesStore.createIndex('topic', 'topic', { unique: false })
         resourcesStore.createIndex('createdAt', 'createdAt', { unique: false })
       }
-      
+
       // Saved resources store
       if (!db.objectStoreNames.contains(STORES.SAVED_RESOURCES)) {
         const savedResourcesStore = db.createObjectStore(STORES.SAVED_RESOURCES, {

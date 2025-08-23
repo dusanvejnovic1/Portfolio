@@ -15,20 +15,15 @@ interface ModelSelectorProps {
   disabled?: boolean
 }
 
-export default function ModelSelector({ selectedModel = 'gpt-4o-mini', onModelChange, disabled }: ModelSelectorProps) {
+export default function ModelSelector({ selectedModel = 'gpt-5-nano', onModelChange, disabled }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   
   const models: ModelOption[] = [
     {
-      id: 'gpt-4o-mini',
-      name: 'GPT-4o Mini',
-      description: 'Fast and efficient for most tasks',
+      id: 'gpt-5-nano',
+      name: 'GPT-5 Nano',
+      description: 'Ultra fast GPT-5 model for low latency tasks',
       isRecommended: true
-    },
-    {
-      id: 'gpt-4o',
-      name: 'GPT-4o',
-      description: 'Higher quality for complex reasoning'
     },
     {
       id: 'gpt-5-mini',
@@ -39,6 +34,16 @@ export default function ModelSelector({ selectedModel = 'gpt-4o-mini', onModelCh
       id: 'gpt-5',
       name: 'GPT-5',
       description: 'Advanced reasoning and analysis'
+    },
+    {
+      id: 'gpt-4o-mini',
+      name: 'GPT-4o Mini',
+      description: 'Fast and efficient for most tasks'
+    },
+    {
+      id: 'gpt-4o',
+      name: 'GPT-4o',
+      description: 'Higher quality for complex reasoning'
     }
   ]
 

@@ -1,382 +1,235 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import crypto from 'crypto';
-import { openai, isGpt5 } from '@/lib/openai';
-import { checkRateLimit } from '@/lib/rateLimit';
-import { CurriculumGenerateRequestSchema } from '@/lib/schemas/curriculum';
-import { curriculumSystemPrompt, curriculumUserPrompt } from '@/lib/prompts/curriculum';
-import { acceptsSSE, createSSEHeaders } from '@/lib/sse';
+import { NextResponse } from 'next/server'
+import { CurriculumGenerateRequestSchema, createErrorResponse } from '@/lib/schemas/curriculum'
+import { curriculumSystemPrompt, curriculumUserPrompt } from '@/lib/prompts/curriculum'
+import { client as openaiClient, resolveModel, isGpt5 } from '@/lib/openai'
+import { createStreamingChatCompletion } from '@/lib/llm'
+import { createStreamProcessor } from '@/lib/streaming/processor'
+import type { CurriculumStreamEvent } from '@/types/modes'
+import crypto from 'crypto'
 
-export const runtime = 'nodejs';
-
-type OpenAIClient = ReturnType<typeof openai>;
-
-export async function POST(request: NextRequest) {
-  const requestId = crypto.randomUUID();
-  console.log('Curriculum generate request:', { requestId, timestamp: new Date().toISOString() });
-
+export async function POST(req: Request) {
+  const requestId = crypto.randomUUID()
+  
   try {
+    // Parse and validate request
+    const body = await req.json().catch(() => {
+      throw new Error('Invalid JSON payload')
+    })
+
+    const parsed = CurriculumGenerateRequestSchema.safeParse(body)
+    if (!parsed.success) {
+      const error = createErrorResponse(
+        'Invalid request parameters',
+        parsed.error.format(),
+        'VALIDATION_ERROR',
+        requestId
+      )
+      return new NextResponse(JSON.stringify(error), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    const requestData = parsed.data
+
+    // Ensure OpenAI key exists
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 });
+      const error = createErrorResponse(
+        'OpenAI API key not configured',
+        undefined,
+        'CONFIG_ERROR',
+        requestId
+      )
+      return new NextResponse(JSON.stringify(error), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      })
     }
 
-    const clientIP =
-      request.headers.get('x-forwarded-for') ||
-      request.headers.get('x-real-ip') ||
-      'unknown';
-    const rateLimit = checkRateLimit(clientIP);
-    if (!rateLimit.allowed) {
-      console.log('Rate limit exceeded:', { requestId, ip: clientIP });
-      return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
-    }
+    // Build prompts
+    const system = curriculumSystemPrompt()
+    const user = curriculumUserPrompt(
+      requestData.topic, 
+      requestData.level, 
+      requestData.durationDays, 
+      requestData.goals
+    )
 
-    const body = await request.json();
-    const parsed = CurriculumGenerateRequestSchema.parse(body);
-
-    console.log('Validated request:', { requestId, topic: parsed.topic, level: parsed.level, durationDays: parsed.durationDays });
-
-    const useSSE = acceptsSSE(request);
-    console.log('Response format:', { requestId, useSSE });
-
-    const model = typeof body.model === 'string' ? body.model : process.env.DEFAULT_MODEL || 'gpt-5';
-    console.log('Using model:', { requestId, model, requested: body.model });
-
-    const client = openai();
-
-    if (useSSE) {
-      return createSSEResponse(client, model, parsed, request, requestId);
-    }
-    return createJSONResponse(client, model, parsed, requestId);
-
-  } catch (error) {
-    console.error('Curriculum generate error:', { requestId, error: error instanceof Error ? error.message : String(error) });
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Invalid request format', details: error.errors }, { status: 400 });
-    }
-
-    if (error instanceof Error) {
-      if (error.message.includes('API key') || error.message.includes('Incorrect API key') || error.message.includes('invalid_api_key')) {
-        return NextResponse.json({ error: 'Invalid OpenAI API key. Please check your API key configuration.' }, { status: 401 });
-      }
-      if (error.message.includes('model') || error.message.includes('Model')) {
-        return NextResponse.json({ error: `Model configuration error. Please verify the model is available for your API key.` }, { status: 400 });
-      }
-      if (error.message.includes('rate limit') || error.message.includes('429')) {
-        return NextResponse.json({ error: 'OpenAI rate limit reached. Please try again in a moment.' }, { status: 429 });
-      }
-    }
-
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-async function createSSEResponse(
-  client: OpenAIClient,
-  model: string,
-  request: z.infer<typeof CurriculumGenerateRequestSchema>,
-  httpRequest: NextRequest,
-  requestId: string
-) {
-  const headers = createSSEHeaders(
-    httpRequest.headers.get('origin') || undefined,
-    process.env.ALLOWED_ORIGIN
-  );
-
-  const encoder = new TextEncoder();
-
-  const readableStream = new ReadableStream({
-    async start(controller) {
-      try {
-        const generatedDays: CurriculumDayContent[] = [];
-
-        for (let dayIndex = 1; dayIndex <= request.durationDays; dayIndex++) {
-          try {
-            const dayContent = await generateSingleDay(
-              client,
-              model,
-              request.topic,
-              request.level,
-              dayIndex,
-              request.durationDays,
-              request.goals
-            );
-
-            if (dayContent) {
-              generatedDays.push(dayContent);
-
-              const dayEvent = {
-                type: 'day',
-                day: dayContent,
-                content: dayContent,
-                index: dayIndex,
-                title: dayContent.title,
-                totalDays: request.durationDays
-              };
-
-              const eventLine = JSON.stringify(dayEvent) + '\n';
-              controller.enqueue(encoder.encode(eventLine));
-
-              console.log('Generated day:', { requestId, day: dayIndex, title: dayContent.title });
+    // Create streaming response
+    const encoder = new TextEncoder()
+    
+    const stream = new ReadableStream({
+      async start(controller) {
+        let isClosed = false
+        
+        const safeEnqueue = (data: Uint8Array) => {
+          if (!isClosed) {
+            try {
+              controller.enqueue(data)
+            } catch {
+              // Controller might be closed, ignore the error
+              isClosed = true
             }
-          } catch (dayError) {
-            console.error('Day generation failed:', { requestId, day: dayIndex, error: dayError });
+          }
+        }
 
-            if (
-              dayError instanceof Error &&
-              (dayError.message.includes('Connection error') ||
-                dayError.message.includes('ENOTFOUND') ||
-                dayError.message.includes('getaddrinfo'))
-            ) {
-              const mockDay: CurriculumDayContent = {
-                day: dayIndex,
-                title: `Day ${dayIndex}: Demo Content - ${request.topic}`,
-                summary: `This is demo content for Day ${dayIndex}. In a real deployment with proper OpenAI API access, this would contain comprehensive learning material for "${request.topic}" at ${request.level} level.`,
-                goals: [
-                  `Understanding core concepts for day ${dayIndex}`,
-                  `Practical application of ${request.topic}`,
-                  `Building on previous knowledge`
-                ],
-                theorySteps: [
-                  `Review fundamental concepts`,
-                  `Explore new theoretical frameworks`,
-                  `Connect theory to practice`
-                ],
-                handsOnSteps: [
-                  `Complete practical exercises`,
-                  `Apply concepts in real scenarios`,
-                  `Build sample projects`
-                ],
-                resources: [
-                  {
-                    title: 'Demo Documentation',
-                    url: 'https://example.com/docs',
-                    type: 'documentation'
-                  }
-                ],
-                assignment: `Practice assignment for ${request.topic} - Day ${dayIndex} focus`,
-                checkForUnderstanding: [
-                  `Can you explain the main concepts?`,
-                  `How would you apply this knowledge?`,
-                  `What challenges did you encounter?`
-                ]
-              };
-
-              generatedDays.push(mockDay);
-
-              const dayEvent = {
-                type: 'day',
-                day: mockDay,
-                content: mockDay,
-                index: dayIndex,
-                title: mockDay.title,
-                totalDays: request.durationDays
-              };
-
-              const eventLine = JSON.stringify(dayEvent) + '\n';
-              controller.enqueue(encoder.encode(eventLine));
-
-              console.log('Generated mock day:', { requestId, day: dayIndex, title: mockDay.title });
-            } else {
+        try {
+          // Initialize stream processor
+          const processor = createStreamProcessor({
+            onEvent: (event: CurriculumStreamEvent) => {
+              const data = JSON.stringify(event) + '\n'
+              safeEnqueue(encoder.encode(data))
+            },
+            onError: (error: Error) => {
               const errorEvent = {
-                type: 'error',
-                error: `Failed to generate day ${dayIndex}: ${dayError instanceof Error ? dayError.message : String(dayError)}`
-              };
+                type: 'error' as const,
+                error: error.message
+              }
+              const data = JSON.stringify(errorEvent) + '\n'
+              safeEnqueue(encoder.encode(data))
+            },
+            maxBufferSize: 128 * 1024 // 128KB buffer limit
+          })
 
-              const errorLine = JSON.stringify(errorEvent) + '\n';
-              controller.enqueue(encoder.encode(errorLine));
-              controller.close();
-              return;
-            }
+          // Start generation
+          const resolvedModel = resolveModel()
+          
+          if (isGpt5(resolvedModel)) {
+            await streamWithResponsesAPI(system, user, resolvedModel, processor)
+          } else {
+            await streamWithChatCompletions(system, user, processor)
+          }
+
+          // Flush any remaining content and close
+          processor.flush()
+          
+        } catch (error) {
+          const errorEvent = {
+            type: 'error' as const,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+          }
+          safeEnqueue(encoder.encode(JSON.stringify(errorEvent) + '\n'))
+        } finally {
+          isClosed = true
+          try {
+            controller.close()
+          } catch {
+            // Controller might already be closed, ignore the error
           }
         }
-
-        const doneEvent = {
-          type: 'done',
-          totalGenerated: generatedDays.length
-        };
-
-        const doneLine = JSON.stringify(doneEvent) + '\n';
-        controller.enqueue(encoder.encode(doneLine));
-        controller.close();
-
-        console.log('Curriculum generation completed:', { requestId, totalDays: generatedDays.length });
-
-      } catch (error) {
-        console.error('SSE streaming error:', { requestId, error });
-
-        const errorEvent = {
-          type: 'error',
-          error: 'Generation failed. Please try again.'
-        };
-
-        const errorLine = JSON.stringify(errorEvent) + '\n';
-        controller.enqueue(encoder.encode(errorLine));
-        controller.close();
       }
-    }
-  });
+    })
 
-  return new NextResponse(readableStream, { headers });
-}
-
-async function createJSONResponse(
-  client: OpenAIClient,
-  model: string,
-  request: z.infer<typeof CurriculumGenerateRequestSchema>,
-  requestId: string
-) {
-  try {
-    const generatedDays: CurriculumDayContent[] = [];
-
-    for (let dayIndex = 1; dayIndex <= request.durationDays; dayIndex++) {
-      const dayContent = await generateSingleDay(
-        client,
-        model,
-        request.topic,
-        request.level,
-        dayIndex,
-        request.durationDays,
-        request.goals
-      );
-
-      if (dayContent) {
-        generatedDays.push(dayContent);
-        console.log('Generated day:', { requestId, day: dayIndex, title: dayContent.title });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive'
       }
-    }
+    })
 
-    return NextResponse.json({
-      days: generatedDays,
-      totalDays: request.durationDays
-    });
-
-  } catch (error) {
-    console.error('JSON generation error:', { requestId, error });
-    return NextResponse.json(
-      { error: 'Generation failed. Please try again.' },
-      { status: 500 }
-    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal server error'
+    const error = createErrorResponse(
+      'Internal server error',
+      message,
+      'INTERNAL_ERROR',
+      requestId
+    )
+    return new NextResponse(JSON.stringify(error), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 }
 
-interface CurriculumDayContent {
-  day: number;
-  title: string;
-  summary: string;
-  goals: string[];
-  theorySteps: string[];
-  handsOnSteps: string[];
-  resources: Array<{
-    title: string;
-    url: string;
-    type: 'documentation' | 'video' | 'tutorial' | 'tool';
-  }>;
-  assignment: string;
-  checkForUnderstanding: string[];
-}
-
-function extractFirstJsonObject(text: string): string | null {
-  // Remove markdown code fences if present
-  const cleaned = text.replace(/```json([\s\S]*?)```/g, '$1').replace(/```([\s\S]*?)```/g, '$1');
-  const match = cleaned.match(/{[\s\S]*}/);
-  return match ? match[0] : null;
-}
-
-async function generateSingleDay(
-  client: OpenAIClient,
+async function streamWithResponsesAPI(
+  system: string,
+  user: string,
   model: string,
-  topic: string,
-  level: 'Beginner' | 'Intermediate' | 'Advanced',
-  dayIndex: number,
-  totalDays: number,
-  goals?: string[]
-): Promise<CurriculumDayContent> {
-  const systemPrompt = curriculumSystemPrompt();
-  const userPrompt = `Generate day ${dayIndex} of ${totalDays} for the curriculum.
+  processor: { processChunk: (chunk: string) => void }
+) {
+  try {
+    const client = openaiClient
+    const combinedInput = `${system}\n\n${user}`
+    const response = await client.responses.stream({ model, input: combinedInput })
 
-${curriculumUserPrompt(topic, level, totalDays, goals)}
+    for await (const chunk of response) {
+      try {
+        const obj = chunk as Record<string, unknown>
+        let content: string | null = null
 
-Focus specifically on Day ${dayIndex}. Respond with a single JSON object following this exact format:
+        if (obj?.type === 'response.output_text.delta') {
+          content = obj.delta as string
+        } else if (obj?.delta) {
+          content = obj.delta as string
+        } else if (obj?.text) {
+          content = obj.text as string
+        }
 
-{
-  "day": ${dayIndex},
-  "title": "Day ${dayIndex} Title",
-  "summary": "Brief summary of what students will learn",
-  "goals": ["learning goal 1", "learning goal 2"],
-  "theorySteps": ["theory step 1", "theory step 2"],
-  "handsOnSteps": ["hands-on step 1", "hands-on step 2"],
-  "resources": [{"title": "Resource Name", "url": "https://example.com", "type": "documentation"}],
-  "assignment": "Practical assignment description",
-  "checkForUnderstanding": ["check question 1", "check question 2"]
+        if (content && typeof content === 'string') {
+          processor.processChunk(content)
+        }
+      } catch (parseError) {
+        // Log but don't fail the entire stream for individual chunk errors
+        console.warn('Failed to parse GPT-5 response chunk:', parseError)
+      }
+    }
+  } catch (streamErr) {
+    throw new Error(`GPT-5 Responses API streaming failed: ${streamErr}`)
+  }
 }
 
-Only return the JSON object, no additional text.`;
-
-  const effectiveModel = model;
-
+async function streamWithChatCompletions(
+  system: string,
+  user: string,
+  processor: { processChunk: (chunk: string) => void }
+) {
   try {
-    let completion;
-    if (isGpt5(effectiveModel) && client.responses && client.responses.create) {
-      completion = await client.responses.create({
-        model: effectiveModel,
-        input: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ]
-        // Optionally: reasoning: { effort: 'high' },
-      });
-    } else {
-      completion = await client.chat.completions.create({
-        model: effectiveModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: 8192,
-        temperature: 0.3
-      });
-    }
+    const messages = [
+      { role: 'system' as const, content: system },
+      { role: 'user' as const, content: user }
+    ]
 
-    let response: string | undefined;
+    const completion = await createStreamingChatCompletion(messages, {
+      model: 'default',
+      maxTokens: 2000,
+      temperature: 0.3
+    })
 
-    if ('choices' in completion && completion.choices?.[0]?.message?.content) {
-      response = completion.choices[0].message.content.trim();
-    } else if ('output' in completion && Array.isArray(completion.output)) {
-      for (const item of completion.output) {
-        if (item.type === 'message' && item.content) {
-          for (const content of item.content) {
-            if (content.type === 'output_text' && content.text) {
-              response = content.text.trim();
-              break;
+    if (Symbol.asyncIterator in Object(completion)) {
+      for await (const chunk of completion as AsyncIterable<unknown>) {
+        try {
+          const obj = chunk as Record<string, unknown>
+          const choices = obj.choices as unknown
+          
+          if (Array.isArray(choices) && choices.length > 0) {
+            const first = choices[0] as Record<string, unknown>
+            const delta = first.delta as unknown
+            
+            if (delta && typeof delta === 'object') {
+              const content = (delta as Record<string, unknown>).content
+              if (typeof content === 'string') {
+                processor.processChunk(content)
+              }
             }
           }
+        } catch (parseError) {
+          console.warn('Failed to parse chat completion chunk:', parseError)
         }
       }
-    }
-
-    if (!response) {
-      throw new Error('No response from OpenAI');
-    }
-
-    const jsonString = extractFirstJsonObject(response);
-    if (!jsonString) {
-      console.error('No JSON object found in OpenAI response:', response);
-      throw new Error('Invalid JSON response from OpenAI');
-    }
-
-    try {
-      const parsed = JSON.parse(jsonString);
-      if (!parsed.day || !parsed.title || !parsed.summary) {
-        throw new Error('Invalid day structure returned from OpenAI');
+    } else {
+      // Handle non-streaming response
+      const single = completion as Record<string, unknown>
+      const choices = single.choices as unknown as Array<Record<string, unknown>> | undefined
+      const message = choices?.[0]?.message as unknown as Record<string, unknown> | undefined
+      const content = message?.content
+      
+      if (content && typeof content === 'string') {
+        processor.processChunk(content)
       }
-      return parsed;
-    } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', { response, error: parseError });
-      throw new Error('Invalid JSON response from OpenAI');
     }
-
   } catch (error) {
-    throw error instanceof Error ? error : new Error(String(error));
+    throw new Error(`Chat completions streaming failed: ${error}`)
   }
 }

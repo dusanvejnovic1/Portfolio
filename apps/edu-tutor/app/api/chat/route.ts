@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
-import { openai, moderateContent, validateEnvironment, resolveModel, isGpt5 } from '@/lib/openai'
+import { client as openaiClient, moderateContent, validateEnvironment, resolveModel, isGpt5 } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
             
             try {
               // Check if responses API exists
-              const client = openai()
+              const client = openaiClient
               if (!client.responses || typeof client.responses.stream !== 'function') {
                 throw new Error('Responses API not available in current SDK version')
               }
@@ -211,17 +211,12 @@ export async function POST(request: NextRequest) {
               console.log(`Responses API failed for ${model}, falling back to Chat Completions API:`, responseApiError)
               usedFallback = true
               
-              // Fallback to Chat Completions API for GPT-5 models
-              const completion = await openai().chat.completions.create({
-                model,
-                messages: [
-                  { role: 'system', content: systemPrompt },
-                  { role: 'user', content: message }
-                ],
-                temperature: 0.5,
-                max_tokens: 800,
-                stream: true,
-              })
+              // Fallback to Chat Completions API for GPT-5 models via llm wrapper
+              const { createStreamingChatCompletion } = await import('@/lib/llm')
+              const completion = await createStreamingChatCompletion([
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: message }
+              ], { model: 'default', maxTokens: 800, temperature: 0.5 })
               
               // Send periodic keepalive comments
               const keepAliveInterval = setInterval(() => {
@@ -232,11 +227,38 @@ export async function POST(request: NextRequest) {
                 }
               }, 30000) // Every 30 seconds
               
-              for await (const chunk of completion) {
-                const content = chunk.choices[0]?.delta?.content
-                if (content) {
-                  fullResponse += content
-                  const data = JSON.stringify({ delta: content })
+              const extractContent = (chunk: unknown) => {
+                try {
+                  const obj = chunk as Record<string, unknown>
+                  const choices = obj['choices'] as unknown as Array<Record<string, unknown>> | undefined
+                  const first = choices?.[0]
+                  const delta = first ? (first['delta'] as unknown as Record<string, unknown> | undefined) : undefined
+                  const deltaContent = delta ? delta['content'] : undefined
+                  const messageContent = first ? first['message'] && (first['message'] as unknown as Record<string, unknown>)['content'] : undefined
+                  const content = typeof deltaContent === 'string' ? deltaContent : (typeof messageContent === 'string' ? messageContent : undefined)
+                  return content
+                } catch {
+                  return undefined
+                }
+              }
+
+              if (Symbol.asyncIterator in Object(completion)) {
+                for await (const chunk of completion as AsyncIterable<unknown>) {
+                  const content = extractContent(chunk)
+                  if (content) {
+                    fullResponse += content
+                    const data = JSON.stringify({ delta: content })
+                    controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                  }
+                }
+              } else {
+                const single = completion as unknown as Record<string, unknown>
+                const choices = single.choices as unknown as Array<Record<string, unknown>> | undefined
+                const message = choices?.[0]?.message as unknown as Record<string, unknown> | undefined
+                const raw = message?.content
+                if (raw && typeof raw === 'string') {
+                  fullResponse += raw
+                  const data = JSON.stringify({ delta: raw })
                   controller.enqueue(encoder.encode(`data: ${data}\n\n`))
                 }
               }
@@ -245,16 +267,11 @@ export async function POST(request: NextRequest) {
             }
           } else {
             // Use Chat Completions API for GPT-4 family
-            const completion = await openai().chat.completions.create({
-              model,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: message }
-              ],
-              temperature: 0.5,
-              max_tokens: 800, // Keep responses concise
-              stream: true,
-            })
+            const { createStreamingChatCompletion } = await import('@/lib/llm')
+            const completion = await createStreamingChatCompletion([
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: message }
+            ], { model: 'default', maxTokens: 800, temperature: 0.5 })
             
             // Send periodic keepalive comments
             const keepAliveInterval = setInterval(() => {
@@ -265,14 +282,49 @@ export async function POST(request: NextRequest) {
               }
             }, 30000) // Every 30 seconds
             
-            for await (const chunk of completion) {
-              const content = chunk.choices[0]?.delta?.content
-              if (content) {
-                fullResponse += content
-                const data = JSON.stringify({ delta: content })
-                controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+              const extractContent = (chunk: unknown) => {
+                try {
+                  const obj = chunk as Record<string, unknown>
+                  const choices = obj['choices'] as unknown
+                  if (Array.isArray(choices) && choices.length > 0) {
+                    const first = choices[0] as Record<string, unknown>
+                    const delta = first['delta'] as unknown
+                    if (delta && typeof delta === 'object') {
+                      const content = (delta as Record<string, unknown>)['content']
+                      if (typeof content === 'string') return content
+                    }
+                    const message = first['message'] as unknown
+                    if (message && typeof message === 'object') {
+                      const content = (message as Record<string, unknown>)['content']
+                      if (typeof content === 'string') return content
+                    }
+                  }
+                  return undefined
+                } catch {
+                  return undefined
+                }
               }
-            }
+
+              if (Symbol.asyncIterator in Object(completion)) {
+                for await (const chunk of completion as AsyncIterable<unknown>) {
+                  const content = extractContent(chunk)
+                  if (content) {
+                    fullResponse += content
+                    const data = JSON.stringify({ delta: content })
+                    controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                  }
+                }
+              } else {
+                const single = completion as unknown as Record<string, unknown>
+                const choices = single.choices as unknown as Array<Record<string, unknown>> | undefined
+                const message = choices?.[0]?.message as unknown as Record<string, unknown> | undefined
+                const raw = message?.content
+                if (raw && typeof raw === 'string') {
+                  fullResponse += raw
+                  const data = JSON.stringify({ delta: raw })
+                  controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+                }
+              }
             
             clearInterval(keepAliveInterval)
           }
