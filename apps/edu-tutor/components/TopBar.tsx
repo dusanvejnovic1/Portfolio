@@ -1,6 +1,8 @@
 'use client'
 
+import { useTheme } from './ThemeProvider'
 import ModelSelector from './ModelSelector'
+import Toggle from './Toggle'
 
 interface TopBarProps {
   onSidebarToggle?: () => void
@@ -17,6 +19,12 @@ export default function TopBar({
   onModelChange,
   hintsMode = true
 }: TopBarProps) {
+  const { theme, setTheme, isLoading } = useTheme()
+
+  const handleThemeToggle = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark')
+  }
+
   return (
     <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
       <div className="flex items-center justify-between">
@@ -50,7 +58,18 @@ export default function TopBar({
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {/* Theme Toggle */}
+          <div className="hidden sm:flex items-center gap-2">
+            <Toggle
+              checked={theme === 'dark'}
+              onChange={handleThemeToggle}
+              label="Dark Mode"
+              disabled={isLoading}
+              variant="theme"
+            />
+          </div>
+
           {/* Mode indicator */}
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
             <div className={`w-2 h-2 rounded-full ${hintsMode ? 'bg-blue-500' : 'bg-green-500'}`}></div>

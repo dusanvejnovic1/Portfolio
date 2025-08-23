@@ -14,7 +14,7 @@
   }
 }
 
-/* Theme attribute driven colors */
+/* Theme attribute driven colors - these will be set by ThemeProvider */
 [data-theme="dark"] {
   --background: #0a0a0a;
   --foreground: #ededed;
@@ -29,6 +29,12 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+/* Ensure smooth transitions for theme changes */
+* {
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 /* minimal utility */

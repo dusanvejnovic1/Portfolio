@@ -5,31 +5,46 @@ interface ToggleProps {
   onChange: (checked: boolean) => void
   label: string
   disabled?: boolean
+  variant?: 'default' | 'theme'
 }
 
-export default function Toggle({ checked, onChange, label, disabled = false }: ToggleProps) {
+export default function Toggle({ checked, onChange, label, disabled = false, variant = 'default' }: ToggleProps) {
+  const baseClasses = `
+    relative inline-flex h-6 w-11 items-center rounded-full
+    transition-colors duration-200 ease-in-out
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+    disabled:opacity-50 disabled:cursor-not-allowed
+  `
+
+  const getToggleClasses = () => {
+    if (variant === 'theme') {
+      return `${baseClasses} ${
+        checked 
+          ? 'bg-blue-600 dark:bg-blue-500' 
+          : 'bg-gray-300 dark:bg-gray-600'
+      }`
+    }
+    
+    return `${baseClasses} ${
+      checked 
+        ? 'bg-blue-600' 
+        : 'bg-gray-300 dark:bg-gray-600'
+    }`
+  }
+
   return (
     <div className="flex items-center space-x-3">
-      <label htmlFor="hints-toggle" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label htmlFor="toggle" className="text-sm font-medium text-gray-700 dark:text-gray-300">
         {label}
       </label>
       <button
-        id="hints-toggle"
+        id="toggle"
         type="button"
         role="switch"
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`
-          relative inline-flex h-6 w-11 items-center rounded-full
-          transition-colors duration-200 ease-in-out
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-          disabled:opacity-50 disabled:cursor-not-allowed
-          ${checked 
-            ? 'bg-blue-600' 
-            : 'bg-gray-300 dark:bg-gray-600'
-          }
-        `}
+        className={getToggleClasses()}
       >
         <span
           className={`
