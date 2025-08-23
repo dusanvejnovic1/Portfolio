@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
-import { openai, resolveModel, isGpt5 } from '@/lib/openai'
+import { client as openaiClient, resolveModel, isGpt5 } from '@/lib/openai'
 
 export const runtime = 'nodejs'
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
             if (m.role && m.content) chatMessages.push({ role: m.role, content: m.content })
           }
 
-          const client = openai()
+          const client = openaiClient
 
                 const extractContent = (chunk: unknown) => {
                   try {

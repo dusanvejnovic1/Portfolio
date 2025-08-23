@@ -32,10 +32,13 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
         document.documentElement.classList.add('dark')
         localStorage.setItem('theme', 'dark')
       }
-  } catch {
+    } catch (e) {
+      // If accessing localStorage fails, fall back to default dark theme
+      console.warn('ThemeProvider: failed to access localStorage', e)
       document.documentElement.setAttribute('data-theme', 'dark')
       setThemeState('dark')
       document.documentElement.classList.add('dark')
+      void 0
     }
   }, [])
 

@@ -5,7 +5,7 @@ import { preModerate, validateITContent } from '@/lib/moderation'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { ASSIGNMENT_GENERATE_PROMPT_NDJSON, IT_TUTOR_SYSTEM_PROMPT, ASSIGNMENT_MODE_USER_GUIDANCE } from '@/lib/prompts'
 import { AssignmentRequestSchema } from '@/lib/schemas/modes'
-import { openai, resolveModel, isGpt5 } from '@/lib/openai'
+import { client as openaiClient, resolveModel, isGpt5 } from '@/lib/openai'
 import { createStreamingChatCompletion } from '@/lib/llm'
 
 // Note: JSON extraction for model outputs is handled inline where required
@@ -67,9 +67,10 @@ export async function POST(request: NextRequest) {
 
   // Build context for assignment generation
   let contextText = ''
-    if (parsed.constraints) {
-      contextText += `\nConstraints: ${JSON.stringify(parsed.constraints)}`
-    }
+  if (parsed.constraints) {
+    // include constraints inline in the prompt when present
+    contextText += `\nConstraints: ${JSON.stringify(parsed.constraints)}`
+  }
 
     const guidanceNote = parsed.guidanceStyle === 'solutions' 
       ? '\nInclude solution outline in the response for each variant.'
@@ -86,7 +87,9 @@ export async function POST(request: NextRequest) {
   // Use NDJSON prompt for streaming-friendly output and include user-provided assignment-mode guidance (additive)
   // Explicitly ignore any timeBudgetHrs value from client input to avoid large default assignments
   if ('timeBudgetHrs' in (parsed as Record<string, unknown>)) {
-    try { delete (parsed as Record<string, unknown>).timeBudgetHrs } catch {}
+    try { delete (parsed as Record<string, unknown>).timeBudgetHrs } catch {
+      // Ignore errors when deleting optional client-provided fields
+    }
   }
   const prompt = `${ASSIGNMENT_GENERATE_PROMPT_NDJSON}
 
@@ -95,6 +98,7 @@ ${ASSIGNMENT_MODE_USER_GUIDANCE}
 Topic: ${parsed.topic}
 Difficulty: ${parsed.difficulty}${guidanceNote}${extra}
 
+${contextText}
 Produce ${count} variants as NDJSON per the instructions above.`
 
   // Runtime tightening: explicitly instruct the model about strict size and field limits
@@ -171,8 +175,8 @@ STRICT_SIZE_LIMITS (MUST FOLLOW):
                 controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
               }
             } catch {
-              // If we can't parse the line, emit it as progress so the frontend sees something useful
-              controller.enqueue(encoder.encode(JSON.stringify({ type: 'progress', value: stripped }) + '\n'))
+                  // If we can't parse the line, emit it as progress so the frontend sees something useful
+                  controller.enqueue(encoder.encode(JSON.stringify({ type: 'progress', value: stripped }) + '\n'))
             }
           }
 
@@ -194,7 +198,7 @@ STRICT_SIZE_LIMITS (MUST FOLLOW):
           console.log('Assignment generate - resolved model:', resolvedModel, { isGpt5: isGpt5(resolvedModel) })
 
           if (isGpt5(resolvedModel)) {
-            const client = openai()
+            const client = openaiClient
             const combined = `${IT_TUTOR_SYSTEM_PROMPT}\n\n${finalPrompt}`
             // Constrain model output to speed up generation and make streaming predictable.
             // Note: the Responses API client for GPT-5 models may not accept 'temperature' as a top-level param

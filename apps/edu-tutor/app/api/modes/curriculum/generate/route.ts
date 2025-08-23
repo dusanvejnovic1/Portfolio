@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { CurriculumGenerateRequestSchema } from '@/lib/schemas/curriculum'
 import { curriculumSystemPrompt, curriculumUserPrompt } from '@/lib/prompts/curriculum'
-import { openai, resolveModel, isGpt5 } from '@/lib/openai'
+import { client as openaiClient, resolveModel, isGpt5 } from '@/lib/openai'
 import { createStreamingChatCompletion, createChatCompletion } from '@/lib/llm'
 
 export async function POST(req: Request) {
@@ -125,9 +125,9 @@ export async function POST(req: Request) {
           const resolvedModel = resolveModel()
           // Diagnostic log: show which model was resolved for this request
           console.log('Curriculum generate - resolved model:', resolvedModel, { isGpt5: isGpt5(resolvedModel) })
-          if (isGpt5(resolvedModel)) {
+      if (isGpt5(resolvedModel)) {
             try {
-              const client = openai()
+        const client = openaiClient
               const combinedInput = `${system}\n\n${user}`
               const response = await client.responses.stream({ model: resolvedModel, input: combinedInput })
 

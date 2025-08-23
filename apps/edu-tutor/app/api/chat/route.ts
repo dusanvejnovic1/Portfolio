@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
-import { openai, moderateContent, validateEnvironment, resolveModel, isGpt5 } from '@/lib/openai'
+import { client as openaiClient, moderateContent, validateEnvironment, resolveModel, isGpt5 } from '@/lib/openai'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { SYSTEM_PROMPT, MODERATION_REFUSAL_MESSAGE, RATE_LIMIT_MESSAGE } from '@/lib/prompts'
 
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
             
             try {
               // Check if responses API exists
-              const client = openai()
+              const client = openaiClient
               if (!client.responses || typeof client.responses.stream !== 'function') {
                 throw new Error('Responses API not available in current SDK version')
               }

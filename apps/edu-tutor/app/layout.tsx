@@ -28,7 +28,7 @@ export default function RootLayout({
   const SERVER_THEME = 'dark'
 
   return (
-    <html lang="en" data-theme={SERVER_THEME}>
+    <html lang="en" data-theme={SERVER_THEME} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: setThemeScript }} />
       </head>

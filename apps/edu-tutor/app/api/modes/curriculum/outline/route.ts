@@ -12,12 +12,16 @@ function tryParseJson(text: string): unknown | null {
   if (!text || typeof text !== 'string') return null
   const trimmed = text.trim()
   // 1) Try direct parse
-  try { return JSON.parse(trimmed) } catch {}
+  try { return JSON.parse(trimmed) } catch {
+    // ignore parse error
+  }
 
   // 2) Look for fenced ```json ... ``` blocks
   const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed)
   if (fenced && fenced[1]) {
-    try { return JSON.parse(fenced[1].trim()) } catch {}
+    try { return JSON.parse(fenced[1].trim()) } catch {
+      // ignore parse error
+    }
   }
 
   // 3) Fallback: find first '{' and last '}' and attempt to parse that slice
@@ -25,7 +29,9 @@ function tryParseJson(text: string): unknown | null {
   const lastBrace = trimmed.lastIndexOf('}')
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
     const candidate = trimmed.slice(firstBrace, lastBrace + 1)
-  try { return JSON.parse(candidate) } catch {}
+    try { return JSON.parse(candidate) } catch {
+      // ignore parse error
+    }
   }
 
   // Nothing worked

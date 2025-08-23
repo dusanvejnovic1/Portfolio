@@ -1,0 +1,26 @@
+﻿
+> portfolio-ai@0.1.0 dev
+> next dev
+
+node.exe :  ΓÜá Warning: Next.js inferred your workspace root, but it may not be correct.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( ΓÜá Warning: N...not be correct.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ We detected multiple lockfiles and selected the directory of E:\Projects\Portfolio-AI-main\package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * E:\Projects\Portfolio-AI-main\Portfolio-AI\apps\edu-tutor\package-lock.json
+   * E:\Projects\Portfolio-AI-main\Portfolio-AI\apps\package-lock.json
+   * E:\Projects\Portfolio-AI-main\Portfolio-AI\package-lock.json
+
+   Γû▓ Next.js 15.5.0
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.1.6:3000
+   - Environments: .env.local
+
+ Γ£ô Starting...
+ Γ£ô Ready in 1558ms

@@ -49,7 +49,11 @@ export default function AssignmentMode() {
       const cur: LocalAssignmentSet = prev || { topic: formData.topic || '', difficulty: (formData.difficulty as LearningLevel) || 'Beginner', variants: [], timeBudgetHrs: formData.timeBudgetHrs }
       // Avoid duplicates by id
     if (cur.variants.find(v => v.id === assignment.id)) return cur
-    const assignedId = assignment.id && String(assignment.id).trim() ? String(assignment.id) : (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function' ? (crypto as any).randomUUID() : `${Date.now()}-${Math.random()}`)
+    const assignedId = assignment.id && String(assignment.id).trim()
+      ? String(assignment.id)
+      : (typeof crypto !== 'undefined' && typeof (crypto as unknown as { randomUUID?: () => string }).randomUUID === 'function'
+        ? (crypto as unknown as { randomUUID: () => string }).randomUUID()
+        : `${Date.now()}-${Math.random()}`)
     const itemWithId = { ...assignment, id: assignedId }
     console.debug('Generator item received', itemWithId)
     const updated = { ...cur, variants: [...cur.variants, itemWithId] }
@@ -90,9 +94,12 @@ export default function AssignmentMode() {
     // optimistic UI: mark loading
     setCurrentSet(prev => {
       if (!prev) return prev
-      const copy = { ...prev, variants: [...prev.variants] }
-      ;(copy.variants[idx] as any) = { ...(copy.variants[idx] as any), loading: true }
-      return copy
+  const copy = { ...prev, variants: [...prev.variants] }
+  // mark loading flag on the specific variant without using `any`
+  const orig = copy.variants[idx]
+  const withLoading = { ...(orig as unknown as Record<string, unknown>), loading: true }
+  copy.variants[idx] = withLoading as unknown as AssignmentSummary | AssignmentVariant
+  return copy
     })
 
     try {
@@ -114,10 +121,12 @@ export default function AssignmentMode() {
       // clear loading flag
       setCurrentSet(prev => {
         if (!prev) return prev
-        const copy = { ...prev, variants: [...prev.variants] }
-        ;(copy.variants[idx] as any) = { ...(copy.variants[idx] as any) }
-        delete (copy.variants[idx] as any).loading
-        return copy
+  const copy = { ...prev, variants: [...prev.variants] }
+  const orig = copy.variants[idx]
+  const withoutLoading = { ...(orig as unknown as Record<string, unknown>) }
+  delete (withoutLoading as Record<string, unknown>).loading
+  copy.variants[idx] = withoutLoading as unknown as AssignmentSummary | AssignmentVariant
+  return copy
       })
     }
   }

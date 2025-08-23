@@ -5,8 +5,8 @@ const nextConfig = {
   },
   env: {
     // These will be available at build time
-  NEXT_PUBLIC_APP_NAME: 'Portfolio AI',
+    NEXT_PUBLIC_APP_NAME: 'Portfolio AI',
   }
 }
 
-module.exports = nextConfig
+export default nextConfig

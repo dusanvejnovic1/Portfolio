@@ -1,11 +1,11 @@
-import tailwindcss from 'tailwindcss'
+import postcssTailwind from '@tailwindcss/postcss'
 import autoprefixer from 'autoprefixer'
 
-// PostCSS config: enable Tailwind + Autoprefixer so the @tailwind
-// directives in `globals.css` are processed during build/dev.
+// Use the PostCSS bridge for Tailwind in ESM environments.
 export default {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
+  plugins: [
+    // Tailwind v4 PostCSS plugin auto-detects tailwind.config.* in project root
+    postcssTailwind(),
+    autoprefixer(),
+  ],
 };

@@ -16,7 +16,7 @@ const mockOpenAI = {
 
 // Mock the OpenAI module but keep real exports like DEFAULT_MODEL
 vi.mock('@/lib/openai', async (importOriginal) => {
-  const actual = (await importOriginal()) as any
+  const actual = (await importOriginal()) as unknown as Record<string, unknown>
   return {
     ...actual,
     // openai exported as a function in the real module; mirror that

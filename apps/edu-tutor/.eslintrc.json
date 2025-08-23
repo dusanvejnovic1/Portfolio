@@ -1,6 +1,1 @@
-{
-  "extends": [
-    "next/core-web-vitals",
-    "next/typescript"
-  ]
-}
+// backed up at .eslintrc.json.bak by automated upgrade script

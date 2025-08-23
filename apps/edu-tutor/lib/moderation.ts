@@ -242,22 +242,25 @@ export async function validateITContent(
 
   // Type-specific validation
   switch (type) {
-    case 'curriculum':
+    case 'curriculum': {
       if (content.length < 100) {
         warnings.push('Curriculum content seems very short')
       }
       break
-    case 'assignment':
+    }
+    case 'assignment': {
       if (!content.toLowerCase().includes('objective') && !content.toLowerCase().includes('goal')) {
         warnings.push('Assignment should include clear objectives')
       }
       break
-    case 'assessment':
+    }
+    case 'assessment': {
       if (!content.toLowerCase().includes('score') && !content.toLowerCase().includes('rating')) {
         warnings.push('Assessment should include scoring criteria')
       }
       break
-    case 'resources':
+    }
+    case 'resources': {
       // Check for URLs in resources
       const urls = content.match(/https?:\/\/[^\s]+/g) || []
       const invalidUrls = urls.filter(url => !sanitizeURL(url))
@@ -265,6 +268,7 @@ export async function validateITContent(
         errors.push(`Invalid URLs found: ${invalidUrls.join(', ')}`)
       }
       break
+    }
   }
 
   return {
