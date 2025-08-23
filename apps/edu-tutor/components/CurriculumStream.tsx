@@ -9,7 +9,7 @@ import {
 import { fetchNDJSONStream } from '@/lib/sse'
 
 interface CurriculumStreamMessage {
-  type: 'progress' | 'day' | 'error' | 'done'
+  type: 'progress' | 'day' | 'error' | 'done' | 'full_plan'
   value?: string
   day?: CurriculumDay
   content?: CurriculumDay // For compatibility with server response format
@@ -20,7 +20,7 @@ interface CurriculumStreamMessage {
 function isCurriculumStreamMessage(message: unknown): message is CurriculumStreamMessage {
   if (typeof message !== 'object' || message === null) return false
   const msg = message as CurriculumStreamMessage
-  return typeof msg.type === 'string' && ['progress', 'day', 'error', 'done'].includes(msg.type)
+  return typeof msg.type === 'string' && ['progress', 'day', 'error', 'done', 'full_plan'].includes(msg.type)
 }
 
 interface CurriculumStreamProps {
@@ -48,6 +48,15 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
   })
   
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Track whether a full_plan was received and whether parent was notified
+  const fullPlanReceivedRef = useRef(false)
+  const parentNotifiedRef = useRef(false)
+  const onCompleteTimeoutRef = useRef<number | null>(null)
+  // Helper to normalize titles: remove any repeated leading "Day <n>:" prefixes
+  const normalizeTitle = (t?: string) => {
+    if (!t) return ''
+    return (t || '').replace(/^(\s*Day\s*\d+:\s*)+/i, '').trim()
+  }
 
   const startGeneration = useCallback(async () => {
     if (abortControllerRef.current) {
@@ -73,16 +82,28 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
         },
         body: JSON.stringify(request),
         signal: controller.signal,
-        onMessage: (message: unknown) => {
+  onMessage: (message: unknown) => {
           if (!isCurriculumStreamMessage(message)) {
             if (typeof message === 'object' && message !== null) {
               const fallback = message as { days?: CurriculumDay[], totalDays?: number }
               if (Array.isArray(fallback.days)) {
+                // Dedupe fallback days by stable key
+                const makeKey = (d: CurriculumDay) => `${d.day}-${normalizeTitle(d.title)}`
+                const seen = new Set<string>()
+                const deduped = [] as CurriculumDay[]
+                for (const d of fallback.days!) {
+                  const k = makeKey(d)
+                  if (!seen.has(k)) {
+                    seen.add(k)
+                    deduped.push(d)
+                  }
+                }
+                deduped.sort((a, b) => a.day - b.day)
                 setState(prev => ({
                   ...prev,
-                  days: fallback.days!.sort((a, b) => a.day - b.day),
-                  currentDay: fallback.days!.length,
-                  progress: `Loaded ${fallback.days!.length} days from fallback response`
+                  days: deduped,
+                  currentDay: deduped.length,
+                  progress: `Loaded ${deduped.length} days from fallback response`
                 }))
                 return
               }
@@ -97,15 +118,83 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               progress: msg.value || ''
             }))
           } else if (msg.type === 'day') {
+            // Received lightweight summary during streaming
             const dayData = msg.day || msg.content
             if (dayData) {
               const day = dayData as CurriculumDay
-              setState(prev => ({
-                ...prev,
-                days: [...prev.days, day].sort((a, b) => a.day - b.day),
-                currentDay: Math.max(prev.currentDay, day.day),
-                progress: `Completed Day ${day.day}: ${day.title}`
-              }))
+              // Insert/merge summary (may be partial) but avoid overwriting full day later
+              setState(prev => {
+                const existsIdx = prev.days.findIndex(d => d.day === day.day)
+                if (existsIdx !== -1) {
+                  // Merge: prefer existing richer fields, but fill in summary/title if missing
+                  const existing = prev.days[existsIdx]
+                  const merged = {
+                    ...existing,
+                    title: existing.title || day.title,
+                    summary: existing.summary || day.summary
+                  }
+                  const newDays = [...prev.days]
+                  newDays[existsIdx] = merged
+                  return {
+                    ...prev,
+                    days: newDays,
+                    currentDay: Math.max(prev.currentDay, day.day),
+                    progress: `Completed Day ${day.day}: ${merged.title || day.title}`
+                  }
+                }
+
+                const newDays = [...prev.days, day]
+                newDays.sort((a, b) => a.day - b.day)
+                return {
+                  ...prev,
+                  days: newDays,
+                  currentDay: Math.max(prev.currentDay, day.day),
+                  progress: `Completed Day ${day.day}: ${day.title}`
+                }
+              })
+            }
+          } else if (isCurriculumStreamMessage(msg) && msg.type === 'full_plan') {
+            // New: server sent the complete plan with full day objects
+            const full = msg.content || (msg as unknown as Record<string, unknown>).value
+            if (full && Array.isArray((full as unknown as Record<string, unknown>).days)) {
+              // Normalize and dedupe by day number
+              const incoming: CurriculumDay[] = (full as unknown as { days: CurriculumDay[] }).days
+              incoming.sort((a, b) => a.day - b.day)
+              setState(prev => {
+                const map = new Map<number, CurriculumDay>()
+                // First seed with existing summaries
+                for (const d of prev.days) map.set(d.day, d)
+                // Overwrite with full incoming days
+                for (const d of incoming) map.set(d.day, d)
+                const merged = Array.from(map.values()).sort((a, b) => a.day - b.day)
+                // Mark full plan received so we can notify parent
+                fullPlanReceivedRef.current = true
+                // Notify parent now that we have full data (avoid updating during render)
+                if (onComplete && !parentNotifiedRef.current) {
+                  setTimeout(() => {
+                    const plan: CurriculumPlan = {
+                      topic: request.topic,
+                      level: request.level,
+                      durationDays: request.durationDays,
+                      outline: request.outline || [],
+                      days: merged
+                    }
+                    try {
+                      onComplete(plan)
+                      parentNotifiedRef.current = true
+                    } catch (e) {
+                      console.error('onComplete handler failed:', e)
+                    }
+                  }, 0)
+                }
+                return {
+                  ...prev,
+                  days: merged,
+                  currentDay: Math.max(prev.currentDay, merged.length > 0 ? merged[merged.length - 1].day : prev.currentDay),
+                  progress: `Full plan received with ${merged.length} days`,
+                  isStreaming: false
+                }
+              })
             }
           } else if (msg.type === 'done') {
             const total = msg.totalGenerated ?? request.durationDays
@@ -115,19 +204,7 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
               totalDays: total,
               progress: `Generation complete! Generated ${prev.days.length} days.`
             }))
-            // Defer calling onComplete to avoid setState during render. Use a microtask.
-            if (onComplete) {
-              setTimeout(() => {
-                const plan: CurriculumPlan = {
-                  topic: request.topic,
-                  level: request.level,
-                  durationDays: request.durationDays,
-                  outline: request.outline || [],
-                  days: state.days
-                }
-                onComplete(plan)
-              }, 0)
-            }
+            // onComplete will be called from the stream onComplete handler after a short delay
           } else if (msg.type === 'error') {
             const errorMsg = msg.error || 'Generation failed'
             setState(prev => ({
@@ -141,23 +218,47 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
           }
         },
         onComplete: () => {
+          // Capture days and update local state first, then call parent's onComplete
+          let capturedDays: CurriculumDay[] = []
+          // Clear any previous onComplete timeout
+          if (onCompleteTimeoutRef.current) {
+            clearTimeout(onCompleteTimeoutRef.current)
+            onCompleteTimeoutRef.current = null
+          }
+
           setState(prev => {
-            const plan: CurriculumPlan = {
-              topic: request.topic,
-              level: request.level,
-              durationDays: request.durationDays,
-              outline: request.outline || [],
-              days: prev.days
-            }
-            if (onComplete) {
-              onComplete(plan)
-            }
+            capturedDays = prev.days
             return {
               ...prev,
               isStreaming: false,
               progress: `Generation complete! Generated ${prev.days.length} days.`
             }
           })
+
+          // If we've already received the full plan, the parent was likely notified there.
+          if (parentNotifiedRef.current) return
+
+          // Wait a short window for the 'full_plan' event to arrive; if it doesn't, call onComplete with capturedDays
+          if (onComplete) {
+            onCompleteTimeoutRef.current = window.setTimeout(() => {
+              if (!parentNotifiedRef.current) {
+                try {
+                  const plan: CurriculumPlan = {
+                    topic: request.topic,
+                    level: request.level,
+                    durationDays: request.durationDays,
+                    outline: request.outline || [],
+                    days: capturedDays
+                  }
+                  onComplete(plan)
+                  parentNotifiedRef.current = true
+                } catch (e) {
+                  console.error('onComplete failed in fallback timeout:', e)
+                }
+              }
+              onCompleteTimeoutRef.current = null
+            }, 400)
+          }
         },
         onError: (error) => {
           const errorMsg = error.message || 'Network error occurred'
@@ -344,14 +445,16 @@ export default function CurriculumStream({ request, onComplete, onError }: Curri
             <div className="space-y-4">
               {state.days.map((day) => {
                 const displayTitle = (day.title || '').replace(/^Day\s*\d+:\s*/i, '')
+                // Also ensure we strip repeated prefixes consistently
+                const normalizedDisplay = displayTitle.replace(/^(\s*Day\s*\d+:\s*)+/i, '').trim()
                 return (
                 <div 
-                  key={`${day.day}-${displayTitle}`}
+                  key={`${day.day}-${normalizedDisplay}`}
                   className="p-4 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50"
                 >
                   <div className="flex justify-between items-start mb-2">
                     <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                      Day {day.day}: {displayTitle}
+                      Day {day.day}: {normalizedDisplay}
                     </h4>
                   </div>
                   

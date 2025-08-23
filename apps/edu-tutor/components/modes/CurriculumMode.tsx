@@ -23,6 +23,32 @@ export default function CurriculumMode() {
   const [outlineError, setOutlineError] = useState<string | null>(null)
   const [selectedDayIdx, setSelectedDayIdx] = useState(0)
 
+  // Parse a possibly blobbed focus string into sensible bullets
+  function parseFocusToBullets(text?: string): string[] {
+    if (!text) return []
+    const trimmed = text.trim()
+    if (!trimmed) return []
+
+    // 1) Split on explicit newlines first
+    let parts = trimmed.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+
+    // 2) Split on common separators (semicolons, bullets, dashes)
+    parts = trimmed.split(/\s*[;•–—-]\s*/).map(s => s.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+
+    // 3) Split on numbered or "Day N:" markers
+    // Insert a newline before 'Day X:' and before numbered lists like '1.' or '1)'
+    const numberedInserted = trimmed.replace(/(?=\bDay\s*\d+:)/g, '\n')
+                                 .replace(/(?=\b\d+\.)/g, '\n')
+                                 .replace(/(?=\b\d+\))/g, '\n')
+    parts = numberedInserted.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    if (parts.length > 1) return parts
+
+    // Fallback: return the full text as a single item
+    return [trimmed]
+  }
+
   const handleSetupSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.topic) return
@@ -195,16 +221,30 @@ export default function CurriculumMode() {
         </div>
 
         <div className="space-y-4 mb-6">
-          {outline?.map((week: CurriculumWeek, index: number) => (
-            <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                Week {week.week}: {week.focus}
-              </h3>
-              {week.notes && (
-                <p className="text-gray-600 dark:text-gray-400 text-sm">{week.notes}</p>
-              )}
-            </div>
-          ))}
+          {outline?.map((week: CurriculumWeek, index: number) => {
+            const bullets = parseFocusToBullets(week.focus)
+            return (
+              <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                  Week {week.week}:
+                </h3>
+
+                {bullets.length > 1 ? (
+                  <ul className="list-disc list-inside text-gray-700 dark:text-gray-300 mb-2">
+                    {bullets.map((b, i) => (
+                      <li key={i} className="text-sm">{b}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">{bullets[0]}</p>
+                )}
+
+                {week.notes && (
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">{week.notes}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         <div className="flex justify-end">
@@ -340,6 +380,25 @@ export default function CurriculumMode() {
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
                     {currentPlan.days[selectedDayIdx].assignment}
                   </p>
+
+                  {currentPlan.days[selectedDayIdx].resources && currentPlan.days[selectedDayIdx].resources.length > 0 && (
+                    <>
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Resources</h4>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {currentPlan.days[selectedDayIdx].resources.map((resource, idx) => (
+                          <a
+                            key={idx}
+                            href={resource.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                          >
+                            {resource.title}
+                          </a>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

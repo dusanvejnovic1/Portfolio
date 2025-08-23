@@ -42,6 +42,7 @@ export const ResourcesResponseSchema = z.object({
 export const AssignmentRequestSchema = z.object({
   topic: z.string().min(3).max(200),
   difficulty: z.enum(['Beginner', 'Intermediate', 'Advanced']),
+  count: z.number().min(1).max(50).optional(),
   constraints: z.any().optional(),
   timeBudgetHrs: z.number().min(0.5).max(40).optional(),
   guidanceStyle: z.enum(['hints', 'solutions']).optional()
@@ -70,7 +71,7 @@ export const AssignmentVariantSchema = z.object({
 })
 
 export const AssignmentResponseSchema = z.object({
-  set: z.array(AssignmentVariantSchema).length(3)
+  set: z.array(AssignmentVariantSchema).min(1).max(50)
 })
 
 // Assessment Schemas

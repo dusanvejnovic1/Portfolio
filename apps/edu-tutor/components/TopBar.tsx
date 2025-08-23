@@ -13,7 +13,7 @@ interface TopBarProps {
 export default function TopBar({ 
   onSidebarToggle, 
   sidebarOpen,
-  selectedModel = 'gpt-5-mini',
+  selectedModel = 'gpt-5-nano',
   onModelChange,
   hintsMode = true
 }: TopBarProps) {

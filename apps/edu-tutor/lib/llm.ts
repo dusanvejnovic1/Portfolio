@@ -2,11 +2,7 @@
  * LLM wrapper to select between DEFAULT_MODEL and QUALITY_MODEL
  */
 
-import { openai, isGpt5 } from './openai'
-
-export const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
-export const QUALITY_MODEL = process.env.QUALITY_MODEL || 'gpt-4o'
-export const VISION_MODEL = process.env.VISION_MODEL || 'gpt-4o'
+import { openai, isGpt5, DEFAULT_MODEL, QUALITY_MODEL, VISION_MODEL } from './openai'
 
 /**
  * Get the appropriate model for a given task
@@ -106,8 +102,7 @@ export async function createChatCompletion(
       return client.chat.completions.create({
         model: selectedModel,
         messages,
-        // Some SDKs/models expect a different parameter name; include both where supported.
-        ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens, max_completion_tokens: maxTokens } : {}),
+        ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens } : {}),
         temperature,
         stream
       })
@@ -118,7 +113,7 @@ export async function createChatCompletion(
   return client.chat.completions.create({
     model: selectedModel,
     messages,
-    ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens, max_completion_tokens: maxTokens } : {}),
+    ...(typeof maxTokens === 'number' ? { max_tokens: maxTokens } : {}),
     temperature,
     stream
   })

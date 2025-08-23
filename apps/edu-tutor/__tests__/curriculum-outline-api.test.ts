@@ -21,18 +21,16 @@ let mockValidateITContent: ReturnType<typeof vi.fn>
 let mockCheckRateLimit: ReturnType<typeof vi.fn>
 
 describe('Curriculum Outline API', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
-    ;(async () => {
-      const llm = await import('@/lib/llm')
-      const moderation = await import('@/lib/moderation')
-      const rateLimit = await import('@/lib/rateLimit')
-      mockGenerateResponse = vi.mocked(llm).generateResponse
-      mockPreModerate = vi.mocked(moderation).preModerate
-      mockValidateITContent = vi.mocked(moderation).validateITContent
-      mockCheckRateLimit = vi.mocked(rateLimit).checkRateLimit
-    })()
-    
+    const llm = await import('@/lib/llm')
+    const moderation = await import('@/lib/moderation')
+    const rateLimit = await import('@/lib/rateLimit')
+    mockGenerateResponse = vi.mocked(llm).generateResponse
+    mockPreModerate = vi.mocked(moderation).preModerate
+    mockValidateITContent = vi.mocked(moderation).validateITContent
+    mockCheckRateLimit = vi.mocked(rateLimit).checkRateLimit
+
     // Default successful mocks
     mockCheckRateLimit.mockReturnValue({ allowed: true, remaining: 59 })
     mockPreModerate.mockResolvedValue({ allowed: true })

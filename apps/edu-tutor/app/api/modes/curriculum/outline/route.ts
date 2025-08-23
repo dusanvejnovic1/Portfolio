@@ -7,6 +7,31 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { CURRICULUM_OUTLINE_PROMPT, IT_TUTOR_SYSTEM_PROMPT } from '@/lib/prompts'
 import { CurriculumOutlineResponse } from '@/types/modes'
 
+// Helper: try to extract JSON from model text which may include markdown fences or extra text
+function tryParseJson(text: string): unknown | null {
+  if (!text || typeof text !== 'string') return null
+  const trimmed = text.trim()
+  // 1) Try direct parse
+  try { return JSON.parse(trimmed) } catch {}
+
+  // 2) Look for fenced ```json ... ``` blocks
+  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed)
+  if (fenced && fenced[1]) {
+    try { return JSON.parse(fenced[1].trim()) } catch {}
+  }
+
+  // 3) Fallback: find first '{' and last '}' and attempt to parse that slice
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = trimmed.slice(firstBrace, lastBrace + 1)
+  try { return JSON.parse(candidate) } catch {}
+  }
+
+  // Nothing worked
+  return null
+}
+
 // Request validation schema
 const CurriculumOutlineRequestSchema = z.object({
   topic: z.string().min(3).max(200),
@@ -114,17 +139,28 @@ Focus on practical IT skills with progressive difficulty. Create a realistic lea
       { model: 'quality', maxTokens: 4090, temperature: 0.3 }
     )
 
-    // Parse the JSON response
-    let outlineData: CurriculumOutlineResponse
+  // Parse the JSON response (the model may wrap JSON in markdown fences or include extra text)
+    // Diagnostic: log a short preview of the raw model response for debugging
     try {
-      outlineData = JSON.parse(response.trim())
-      
-      // Validate response structure
-      if (!outlineData.outline || !Array.isArray(outlineData.outline)) {
-        throw new Error('Invalid outline structure')
-      }
-    } catch (parseError) {
-      console.error('Failed to parse outline response:', { requestId, error: parseError, response: response.substring(0, 200) })
+      console.log('Raw outline response preview:', response.slice(0, 1200).replace(/\n/g, '\n'))
+    } catch {
+      // ignore
+    }
+
+  const parsedCandidate = tryParseJson(response)
+    if (!parsedCandidate) {
+      console.error('Failed to parse outline response into JSON:', { requestId, preview: response.substring(0, 400) })
+      return NextResponse.json(
+        { error: 'Failed to generate valid curriculum outline' },
+        { status: 500 }
+      )
+    }
+
+  const outlineData = parsedCandidate as CurriculumOutlineResponse
+
+    // Validate response structure
+    if (!outlineData.outline || !Array.isArray(outlineData.outline)) {
+      console.error('Parsed outline has invalid structure:', { requestId, outlineKeys: Object.keys(outlineData || {}) })
       return NextResponse.json(
         { error: 'Failed to generate valid curriculum outline' },
         { status: 500 }

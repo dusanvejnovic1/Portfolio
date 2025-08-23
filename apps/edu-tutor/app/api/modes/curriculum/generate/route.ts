@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { CurriculumGenerateRequestSchema, CurriculumGenerateResponseSchema } from '@/lib/schemas/curriculum'
+import { CurriculumGenerateRequestSchema } from '@/lib/schemas/curriculum'
 import { curriculumSystemPrompt, curriculumUserPrompt } from '@/lib/prompts/curriculum'
 import { openai, resolveModel, isGpt5 } from '@/lib/openai'
 import { createStreamingChatCompletion, createChatCompletion } from '@/lib/llm'
@@ -55,78 +55,60 @@ export async function POST(req: Request) {
         // NDJSON parse errors when the SDK sends partial deltas.
         let buffer = ''
         const emittedDays = new Set<number>()
+  // Keep full day objects server-side while streaming lighter summaries
+  const fullDays: unknown[] = []
+
+        function truncateToSentences(text: string | undefined, maxSentences = 2) {
+          if (!text) return ''
+          // Simple sentence splitter: look for .!? followed by space or line end
+          const parts = text.replace(/\r/g, '').split(/(?<=[.!?])\s+/)
+          if (parts.length <= maxSentences) return parts.join(' ').trim()
+          return parts.slice(0, maxSentences).join(' ').trim()
+        }
 
         const flushBuffer = () => {
-          // Extract complete JSON objects by matching braces, and also
-          // handle newline-delimited lines that may be plain text.
-          let changed = true
-          while (changed) {
-            changed = false
-            // Try to find a complete JSON object by scanning for matching braces
-            const startIdx = buffer.indexOf('{')
-            if (startIdx !== -1) {
-              let depth = 0
-              let endIdx = -1
-              for (let i = startIdx; i < buffer.length; i++) {
-                const ch = buffer[i]
-                if (ch === '{') depth++
-                else if (ch === '}') {
-                  depth--
-                  if (depth === 0) { endIdx = i; break }
-                }
-              }
-              if (endIdx !== -1) {
-                const candidate = buffer.slice(startIdx, endIdx + 1)
-                try {
-                  const obj = JSON.parse(candidate)
-                  // Deduplicate day events by day number when possible
-                  if (obj && typeof obj === 'object') {
-                    const maybeDay = (obj as any).day
-                    if (typeof maybeDay === 'number') {
-                      if (emittedDays.has(maybeDay)) {
-                        // remove the processed region and continue
-                        buffer = buffer.slice(endIdx + 1)
-                        changed = true
-                        continue
-                      }
-                      emittedDays.add(maybeDay)
-                    }
-                  }
-                  controller.enqueue(new TextEncoder().encode(JSON.stringify(obj) + '\n'))
-                  buffer = buffer.slice(endIdx + 1)
-                  changed = true
-                  continue
-                } catch (e) {
-                  // Not parseable; fall through to newline handling
-                }
-              }
-            }
+          // Fast NDJSON-oriented parser: process complete newline-terminated lines in a single pass.
+          if (!buffer.includes('\n')) return
 
-            // Handle newline-delimited lines (plain text or single-line JSON)
-            const nl = buffer.indexOf('\n')
-            if (nl !== -1) {
-              const line = buffer.slice(0, nl).trim()
-              buffer = buffer.slice(nl + 1)
-              if (line) {
-                try {
-                  const obj = JSON.parse(line)
-                  const maybeDay = (obj as any).day
-                  if (typeof maybeDay === 'number') {
-                    if (!emittedDays.has(maybeDay)) emittedDays.add(maybeDay)
-                    else {
-                      changed = true
-                      continue
-                    }
-                  }
-                  controller.enqueue(new TextEncoder().encode(JSON.stringify(obj) + '\n'))
-                } catch (e) {
-                  // Treat as progress text
-                  controller.enqueue(new TextEncoder().encode(JSON.stringify({ type: 'progress', value: line }) + '\n'))
+          const parts = buffer.split('\n')
+          buffer = parts.pop() || ''
+
+          for (const rawLine of parts) {
+            const line = rawLine.trim()
+            if (!line) continue
+
+            const stripped = line.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')
+            try {
+              const obj = JSON.parse(stripped) as unknown
+              const maybeDay = (obj as unknown as Record<string, unknown>)?.day
+              if (maybeDay && typeof maybeDay === 'object' && typeof (maybeDay as Record<string, unknown>).day === 'number') {
+                const dayNum = (maybeDay as Record<string, unknown>).day as number
+                if (!emittedDays.has(dayNum)) {
+                  emittedDays.add(dayNum)
+                  fullDays.push(maybeDay as unknown as Record<string, unknown>)
+                  const maybeSummary = (maybeDay as Record<string, unknown>).summary
+                  const maybeTitle = (maybeDay as Record<string, unknown>).title
+                  const summary = truncateToSentences(typeof maybeSummary === 'string' ? maybeSummary : (typeof maybeTitle === 'string' ? String(maybeTitle) : ''), 2)
+                  const summaryObj = { type: 'day', day: { day: dayNum, title: typeof maybeTitle === 'string' ? String(maybeTitle) : undefined, summary } }
+                  controller.enqueue(new TextEncoder().encode(JSON.stringify(summaryObj) + '\n'))
                 }
-                changed = true
                 continue
               }
+              if (typeof maybeDay === 'number') {
+                if (!emittedDays.has(maybeDay)) emittedDays.add(maybeDay)
+                else continue
+              }
+              controller.enqueue(new TextEncoder().encode(JSON.stringify(obj) + '\n'))
+            } catch {
+              controller.enqueue(new TextEncoder().encode(JSON.stringify({ type: 'progress', value: stripped }) + '\n'))
             }
+          }
+
+          // Prevent unbounded buffer growth
+          const MAX_BUFFER = 128 * 1024 // 128KB
+          if (buffer.length > MAX_BUFFER) {
+            controller.enqueue(new TextEncoder().encode(JSON.stringify({ type: 'progress', value: buffer.slice(0, 1024) }) + '\n'))
+            buffer = ''
           }
         }
 
@@ -141,6 +123,8 @@ export async function POST(req: Request) {
           // supports a different streaming endpoint and the llm wrapper does not
           // provide streaming for it — so we must call responses.stream() directly.
           const resolvedModel = resolveModel()
+          // Diagnostic log: show which model was resolved for this request
+          console.log('Curriculum generate - resolved model:', resolvedModel, { isGpt5: isGpt5(resolvedModel) })
           if (isGpt5(resolvedModel)) {
             try {
               const client = openai()
@@ -148,13 +132,25 @@ export async function POST(req: Request) {
               const response = await client.responses.stream({ model: resolvedModel, input: combinedInput })
 
               for await (const chunkRaw of response) {
-                const chunk: any = chunkRaw
+                const chunk = chunkRaw as unknown
                 // Append partial text and attempt to flush complete JSON/lines
                 let piece: string | null = null
-                if (chunk?.type === 'response.output_text.delta' && typeof chunk.delta === 'string') piece = chunk.delta
-                else if (typeof chunk?.delta === 'string') piece = chunk.delta
-                else if (typeof chunk?.text === 'string') piece = chunk.text
-                else if (typeof chunk === 'string') piece = chunk
+                try {
+                  const obj = chunk as Record<string, unknown>
+                  // Helper: safely extract string fields without using `any`
+                  const tryString = (o: Record<string, unknown> | undefined, key: string) => {
+                    const v = o?.[key]
+                    return typeof v === 'string' ? v : undefined
+                  }
+
+                  if (obj?.type === 'response.output_text.delta') {
+                    piece = tryString(obj, 'delta') ?? null
+                  } else {
+                    piece = tryString(obj, 'delta') ?? tryString(obj, 'text') ?? (typeof chunk === 'string' ? chunk : null)
+                  }
+                } catch {
+                  // ignore parse errors
+                }
                 if (piece) {
                   buffer += piece
                   flushBuffer()
@@ -183,32 +179,51 @@ export async function POST(req: Request) {
             })
 
             if (Symbol.asyncIterator in Object(completion)) {
-              for await (const chunk of completion as AsyncIterable<any>) {
+              for await (const chunk of completion as AsyncIterable<unknown>) {
                 try {
-                  const piece = chunk.choices?.[0]?.delta?.content
+                  const obj = chunk as Record<string, unknown>
+                  const choices = obj['choices'] as unknown
+                  let piece: string | undefined
+                  if (Array.isArray(choices) && choices.length > 0) {
+                    const first = choices[0] as Record<string, unknown>
+                    const delta = first['delta'] as unknown
+                    if (delta && typeof delta === 'object') {
+                      const content = (delta as Record<string, unknown>)['content']
+                      if (typeof content === 'string') piece = content
+                    }
+                    if (!piece) {
+                      const message = first['message'] as unknown
+                      if (message && typeof message === 'object') {
+                        const content = (message as Record<string, unknown>)['content']
+                        if (typeof content === 'string') piece = content
+                      }
+                    }
+                  }
                   if (piece) {
                     buffer += piece
                     flushBuffer()
                   }
-                } catch (inner) {
-                  console.error('Error handling completion chunk:', inner)
+                } catch {
+                  console.error('Error handling completion chunk')
                 }
               }
             } else {
               try {
-                const single = completion as any
-                const raw = single?.choices?.[0]?.message?.content
+                const single = completion as unknown as Record<string, unknown>
+                const choices = single.choices as unknown as Array<Record<string, unknown>> | undefined
+                const message = choices?.[0]?.message as unknown as Record<string, unknown> | undefined
+                const raw = message?.content
                 if (raw && typeof raw === 'string') {
                   buffer += raw
                   flushBuffer()
                 }
-              } catch (inner) {
-                console.error('Error handling non-streaming completion result:', inner)
+              } catch {
+                console.error('Error handling non-streaming completion result')
               }
             }
           }
-          } catch (err) {
-            console.error('OpenAI streaming request failed (will try non-streaming):', err)
+          } catch {
+            console.error('OpenAI streaming request failed (will try non-streaming):')
 
             // Non-streaming fallback using the wrapper (handles GPT-5 Responses API vs Chat Completions).
             try {
@@ -226,17 +241,36 @@ export async function POST(req: Request) {
 
               // Normalize fallback which may be a stream or single completion
               if (Symbol.asyncIterator in Object(fallback)) {
-                for await (const chunk of fallback as AsyncIterable<any>) {
-                  const piece = chunk.choices?.[0]?.delta?.content
-                  if (piece) {
-                    buffer += piece
-                    flushBuffer()
+                for await (const chunk of fallback as AsyncIterable<unknown>) {
+                  try {
+                    const obj = chunk as Record<string, unknown>
+                    const choices = obj['choices'] as unknown
+                    if (Array.isArray(choices) && choices.length > 0) {
+                      const first = choices[0] as Record<string, unknown>
+                      const delta = first['delta'] as unknown
+                      let piece: string | undefined
+                      if (delta && typeof delta === 'object') {
+                        const content = (delta as Record<string, unknown>)['content']
+                        if (typeof content === 'string') piece = content
+                      }
+                      if (!piece) {
+                        const message = first['message'] as unknown
+                        if (message && typeof message === 'object') {
+                          const content = (message as Record<string, unknown>)['content']
+                          if (typeof content === 'string') piece = content
+                        }
+                      }
+                      if (piece) { buffer += piece; flushBuffer() }
+                    }
+                  } catch {
+                    console.error('Error handling fallback chunk')
                   }
                 }
               } else {
-                const raw = (fallback as any)?.choices?.[0]?.message?.content
-                if (raw && typeof raw === 'string') {
-                  buffer += raw
+                const raw = ((fallback as unknown as Record<string, unknown>)?.choices as unknown as Array<Record<string, unknown>> | undefined)?.[0]?.message as unknown as Record<string, unknown> | undefined
+                const content = raw?.content
+                if (content && typeof content === 'string') {
+                  buffer += content
                   flushBuffer()
                 } else {
                   controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', error: 'Empty response from model' }) + '\n'))
@@ -259,6 +293,15 @@ export async function POST(req: Request) {
             }
             // Emit a final done event with the total generated count if known
             controller.enqueue(encoder.encode(JSON.stringify({ type: 'done', totalGenerated: Array.from(emittedDays).length }) + '\n'))
+            // Emit a single full_plan event containing all buffered full day objects
+            try {
+              if (fullDays.length > 0) {
+                // Send the complete plan once to the client
+                controller.enqueue(encoder.encode(JSON.stringify({ type: 'full_plan', plan: { days: fullDays } }) + '\n'))
+              }
+            } catch (e) {
+              console.error('Failed to enqueue full_plan event:', e)
+            }
           } catch (e) {
             console.error('Error flushing buffer on close:', e)
           }

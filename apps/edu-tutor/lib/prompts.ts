@@ -92,6 +92,61 @@ export const ASSIGNMENT_GENERATE_PROMPT = `Generate 3 real-world assignments for
 
 Create 3 distinct variants with different scenarios but similar learning objectives. Include practical rubrics with weights that sum to 1.0.`
 
+// Tightening guidance: keep outputs concise to avoid very large payloads
+// - Each full variant should be no more than ~300 words total across all text fields.
+// - Limit list lengths: objectives <= 5, steps <= 8, deliverables <= 5, hints <= 3, stretchGoals <= 2.
+// - Keep rubric level descriptions short (<= 20 words each).
+// - Prefer short sentences and bullet-style entries where appropriate.
+
+// Streaming / NDJSON-friendly assignment prompt
+export const ASSIGNMENT_GENERATE_PROMPT_NDJSON = `You are an expert IT tutor that produces structured assignments for learners.
+
+Instructions (STRICT):
+- Output NDJSON: one JSON object per line. Do NOT include any surrounding markdown, commentary, or prose.
+- Each line must be a single JSON object (no arrays at top-level). Example per-line object for a full variant:
+  {"type":"variant","variant": { ... }}
+- You may also emit lightweight progress or summary objects like:
+  {"type":"progress","value":"Generating variant 1 of N"}
+  {"type":"assignment","assignment": {"id":"variant-1","title":"...","summary":"..."}}
+- At the end, emit exactly one final JSON object with type 'full_set' containing the complete 'set' array:
+  {"type":"full_set","set": [{...}, {...}, ...]}
+
+Schema for each full variant object (inside variant or inside set):
+{
+  "id": "string",
+  "title": "string",
+  "scenario": "string",
+  "objectives": ["string"],
+  "steps": ["string"],
+  "deliverables": ["string"],
+  "rubric": [ { "name":"string","description":"string","weight":0.3, "levels":[{"score":5,"description":"Excellent"}] } ],
+  "hints": ["string"],
+  "stretchGoals": ["string"]
+}
+
+When given parameters, follow them precisely. If provided a count parameter, produce that many variants. Keep each variant focused, practical, and aligned with professional IT best practices. Do NOT fabricate URLs. If you can't produce the requested count, still emit what you have and finish with a 'full_set' object.
+`
+
+// Tightening NDJSON-specific size and verbosity constraints (STRICT):
+// - Word limits: each full variant object MUST be <= 300 words total across all text fields.
+// - Overall set limit: the entire 'set' should be compact; for count N, aim for <= N * 300 words.
+// - Streaming previews (type: 'assignment') should include a short 'summary' field <= 40 words.
+// - Field limits: objectives <= 5, steps <= 8, deliverables <= 5, hints <= 3, stretchGoals <= 2.
+// - Rubric: keep at most 5 criteria; each level description <= 20 words; weights must sum to 1.0.
+// - Use concise, bullet-like text. Avoid extended prose, examples, or long justifications inside fields.
+// - If a field would be long (e.g., detailed steps), provide a compact outline and keep details minimal; clients can request an expanded version per-variant later.
+// - If the model cannot respect these limits, truncate politely to meet them and note that the variant was truncated.
+
+// Additional user-provided assignment-mode guidance (incorporated, do not replace above):
+export const ASSIGNMENT_MODE_USER_GUIDANCE = `You are in Assignment mode. Be concise and practical. Help students with:
+- Creating practical assignments
+- Understanding requirements
+- Breaking down complex tasks
+- Providing guidance on deliverables
+- Suggesting evaluation criteria
+
+Focus on real-world applications and hands-on learning experiences.`
+
 // Assessment Mode Prompts
 export const ASSESSMENT_SCORE_PROMPT = `Score the submission against the assignment. Return ONLY a JSON object with this structure:
 

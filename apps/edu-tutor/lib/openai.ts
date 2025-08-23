@@ -13,7 +13,7 @@ export function validateEnvironment(): { ok: boolean; error?: string } {
     return { ok: false, error: 'OPENAI_API_KEY environment variable is required' }
   }
   
-  const model = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
+  const model = process.env.DEFAULT_MODEL || 'gpt-5-nano'
   if (!model) {
     return { ok: false, error: 'DEFAULT_MODEL is not configured' }
   }
@@ -36,7 +36,9 @@ function getOpenAIClient(): OpenAI {
 
 export const openai = getOpenAIClient
 
-export const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-4o-mini'
+export const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gpt-5-nano'
+// Diagnostic: print the env value and resolved constant when module loads
+console.log('openai.ts loaded - process.env.DEFAULT_MODEL:', process.env.DEFAULT_MODEL, 'DEFAULT_MODEL export:', DEFAULT_MODEL)
 export const QUALITY_MODEL = process.env.QUALITY_MODEL || 'gpt-4o'
 export const VISION_MODEL = process.env.VISION_MODEL || 'gpt-4o'
 
@@ -48,12 +50,14 @@ export function isGpt5(model: string): boolean {
 // Helper to resolve the effective model for a request
 export function resolveModel(requestedModel?: string): string {
   // Priority: explicit request model -> DEFAULT_MODEL -> safe fallback
-  const model = requestedModel || DEFAULT_MODEL || 'gpt-4o-mini'
+  const model = requestedModel || DEFAULT_MODEL || 'gpt-5-nano'
   
+  // Diagnostic: log resolution details for debugging environment overrides
+  console.log('resolveModel called', { requestedModel, DEFAULT_MODEL, resolvedCandidate: model })
   // Validate that the model string is non-empty
   if (!model || typeof model !== 'string' || !model.trim()) {
     console.warn('Invalid model provided, falling back to safe default:', { requestedModel, DEFAULT_MODEL })
-    return 'gpt-4o-mini'
+    return 'gpt-5-nano'
   }
   
   return model.trim()
@@ -141,9 +145,8 @@ export async function testOpenAIConnection(testModel?: string) {
       const completion = await client.chat.completions.create({
         model,
         messages: [{ role: 'user', content: 'Say "pong"' }],
-        // Include both parameter names to be compatible with SDK/model differences
+        // Use max_tokens only (avoid duplicate param errors)
         max_tokens: 5,
-        max_completion_tokens: 5,
         temperature: 0
       })
       

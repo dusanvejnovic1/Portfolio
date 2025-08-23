@@ -227,9 +227,24 @@ export async function POST(request: NextRequest) {
                 }
               }, 30000) // Every 30 seconds
               
+              const extractContent = (chunk: unknown) => {
+                try {
+                  const obj = chunk as Record<string, unknown>
+                  const choices = obj['choices'] as unknown as Array<Record<string, unknown>> | undefined
+                  const first = choices?.[0]
+                  const delta = first ? (first['delta'] as unknown as Record<string, unknown> | undefined) : undefined
+                  const deltaContent = delta ? delta['content'] : undefined
+                  const messageContent = first ? first['message'] && (first['message'] as unknown as Record<string, unknown>)['content'] : undefined
+                  const content = typeof deltaContent === 'string' ? deltaContent : (typeof messageContent === 'string' ? messageContent : undefined)
+                  return content
+                } catch {
+                  return undefined
+                }
+              }
+
               if (Symbol.asyncIterator in Object(completion)) {
-                for await (const chunk of completion as AsyncIterable<any>) {
-                  const content = chunk.choices?.[0]?.delta?.content
+                for await (const chunk of completion as AsyncIterable<unknown>) {
+                  const content = extractContent(chunk)
                   if (content) {
                     fullResponse += content
                     const data = JSON.stringify({ delta: content })
@@ -237,8 +252,10 @@ export async function POST(request: NextRequest) {
                   }
                 }
               } else {
-                const single = completion as any
-                const raw = single?.choices?.[0]?.message?.content
+                const single = completion as unknown as Record<string, unknown>
+                const choices = single.choices as unknown as Array<Record<string, unknown>> | undefined
+                const message = choices?.[0]?.message as unknown as Record<string, unknown> | undefined
+                const raw = message?.content
                 if (raw && typeof raw === 'string') {
                   fullResponse += raw
                   const data = JSON.stringify({ delta: raw })
@@ -265,9 +282,32 @@ export async function POST(request: NextRequest) {
               }
             }, 30000) // Every 30 seconds
             
+              const extractContent = (chunk: unknown) => {
+                try {
+                  const obj = chunk as Record<string, unknown>
+                  const choices = obj['choices'] as unknown
+                  if (Array.isArray(choices) && choices.length > 0) {
+                    const first = choices[0] as Record<string, unknown>
+                    const delta = first['delta'] as unknown
+                    if (delta && typeof delta === 'object') {
+                      const content = (delta as Record<string, unknown>)['content']
+                      if (typeof content === 'string') return content
+                    }
+                    const message = first['message'] as unknown
+                    if (message && typeof message === 'object') {
+                      const content = (message as Record<string, unknown>)['content']
+                      if (typeof content === 'string') return content
+                    }
+                  }
+                  return undefined
+                } catch {
+                  return undefined
+                }
+              }
+
               if (Symbol.asyncIterator in Object(completion)) {
-                for await (const chunk of completion as AsyncIterable<any>) {
-                  const content = chunk.choices[0]?.delta?.content
+                for await (const chunk of completion as AsyncIterable<unknown>) {
+                  const content = extractContent(chunk)
                   if (content) {
                     fullResponse += content
                     const data = JSON.stringify({ delta: content })
@@ -275,8 +315,10 @@ export async function POST(request: NextRequest) {
                   }
                 }
               } else {
-                const single = completion as any
-                const raw = single?.choices?.[0]?.message?.content
+                const single = completion as unknown as Record<string, unknown>
+                const choices = single.choices as unknown as Array<Record<string, unknown>> | undefined
+                const message = choices?.[0]?.message as unknown as Record<string, unknown> | undefined
+                const raw = message?.content
                 if (raw && typeof raw === 'string') {
                   fullResponse += raw
                   const data = JSON.stringify({ delta: raw })
