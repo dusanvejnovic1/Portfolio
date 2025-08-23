@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { createErrorResponse } from '@/lib/schemas/curriculum'
 import crypto from 'crypto'
 import { generateResponse } from '@/lib/llm'
 import { preModerate, validateITContent } from '@/lib/moderation'
@@ -54,13 +55,12 @@ const CurriculumOutlineRequestSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID()
-  console.log('Curriculum outline request:', { requestId, timestamp: new Date().toISOString() })
 
   try {
     // Check for OpenAI API key
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
-        { error: 'OpenAI API key not configured' },
+        createErrorResponse('OpenAI API key not configured', undefined, 'CONFIG_ERROR', requestId),
         { status: 500 }
       )
     }
@@ -72,7 +72,6 @@ export async function POST(request: NextRequest) {
     
     const rateLimit = checkRateLimit(clientIP)
     if (!rateLimit.allowed) {
-      console.log('Rate limit exceeded:', { requestId, ip: clientIP })
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
@@ -86,7 +85,6 @@ export async function POST(request: NextRequest) {
     // Content moderation
     const moderation = await preModerate(parsed.topic, { maxLength: 200 })
     if (!moderation.allowed) {
-      console.log('Content blocked by moderation:', { requestId, reason: moderation.reason })
       return NextResponse.json(
         { error: moderation.reason || 'Content not allowed' },
         { status: 400 }
@@ -96,7 +94,6 @@ export async function POST(request: NextRequest) {
     // IT content validation
     const validation = await validateITContent(parsed.topic, 'curriculum')
     if (!validation.isValid) {
-      console.log('IT content validation failed:', { requestId, errors: validation.errors })
       return NextResponse.json(
         { error: validation.errors[0] || 'Content validation failed' },
         { status: 400 }
@@ -137,8 +134,6 @@ Duration: ${parsed.durationDays} days${constraintsText}
 
 Focus on practical IT skills with progressive difficulty. Create a realistic learning progression.`
 
-    console.log('Generating outline:', { requestId, topic: parsed.topic, level: parsed.level, duration: parsed.durationDays })
-
     const response = await generateResponse(
       prompt,
       IT_TUTOR_SYSTEM_PROMPT,
@@ -146,16 +141,8 @@ Focus on practical IT skills with progressive difficulty. Create a realistic lea
     )
 
   // Parse the JSON response (the model may wrap JSON in markdown fences or include extra text)
-    // Diagnostic: log a short preview of the raw model response for debugging
-    try {
-      console.log('Raw outline response preview:', response.slice(0, 1200).replace(/\n/g, '\n'))
-    } catch {
-      // ignore
-    }
-
   const parsedCandidate = tryParseJson(response)
     if (!parsedCandidate) {
-      console.error('Failed to parse outline response into JSON:', { requestId, preview: response.substring(0, 400) })
       return NextResponse.json(
         { error: 'Failed to generate valid curriculum outline' },
         { status: 500 }
@@ -166,23 +153,16 @@ Focus on practical IT skills with progressive difficulty. Create a realistic lea
 
     // Validate response structure
     if (!outlineData.outline || !Array.isArray(outlineData.outline)) {
-      console.error('Parsed outline has invalid structure:', { requestId, outlineKeys: Object.keys(outlineData || {}) })
       return NextResponse.json(
         { error: 'Failed to generate valid curriculum outline' },
         { status: 500 }
       )
     }
 
-    // Post-moderation on generated content
+    // Post-moderation on generated content (validation only)
     const outlineText = outlineData.outline.map(w => `${w.focus} ${w.notes || ''}`).join(' ')
-    const postModeration = await validateITContent(outlineText, 'curriculum')
+    await validateITContent(outlineText, 'curriculum')
     
-    if (postModeration.warnings.length > 0) {
-      console.warn('Generated content warnings:', { requestId, warnings: postModeration.warnings })
-    }
-
-    console.log('Outline generated successfully:', { requestId, weeksCount: outlineData.outline.length })
-
     return NextResponse.json(outlineData, { status: 200 })
 
   } catch (error) {

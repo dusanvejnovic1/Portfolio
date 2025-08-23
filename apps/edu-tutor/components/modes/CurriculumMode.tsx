@@ -9,6 +9,7 @@ import {
   LearningLevel 
 } from '@/types/modes'
 import CurriculumStream from '@/components/CurriculumStream'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 export default function CurriculumMode() {
   const [step, setStep] = useState<'setup' | 'outline' | 'generate' | 'view'>('setup')
@@ -65,8 +66,12 @@ export default function CurriculumMode() {
       
       if (outlineResponse.ok) {
         const outlineData = await outlineResponse.json()
-        setOutline(outlineData.outline)
-        setStep('outline')
+        if (outlineData.outline && Array.isArray(outlineData.outline)) {
+          setOutline(outlineData.outline)
+          setStep('outline')
+        } else {
+          throw new Error('Invalid outline response format')
+        }
       } else {
         // Handle error responses
         let errorMessage = `Request failed with status ${outlineResponse.status}`
@@ -96,8 +101,7 @@ export default function CurriculumMode() {
     setStep('view')
   }
 
-  const handleStreamError = (error: string) => {
-    console.error('Curriculum generation error:', error)
+  const handleStreamError = () => {
     // Could add toast notification here
   }
 
@@ -216,7 +220,7 @@ export default function CurriculumMode() {
           <div className="grid grid-cols-3 gap-4 text-sm text-gray-600 dark:text-gray-400 mb-4">
             <div>Level: <span className="font-medium text-gray-900 dark:text-gray-100">{formData.level}</span></div>
             <div>Duration: <span className="font-medium text-gray-900 dark:text-gray-100">{formData.durationDays} days</span></div>
-            <div>Weeks: <span className="font-medium text-gray-900 dark:text-gray-100">{Math.ceil(formData.durationDays! / 7)}</span></div>
+            <div>Weeks: <span className="font-medium text-gray-900 dark:text-gray-100">{Math.ceil((formData.durationDays || 30) / 7)}</span></div>
           </div>
         </div>
 
@@ -260,15 +264,25 @@ export default function CurriculumMode() {
   }
 
   if (step === 'generate') {
+    if (!formData.topic || !formData.level || !formData.durationDays || !outline) {
+      return (
+        <div className="max-w-4xl mx-auto p-6">
+          <div className="text-center text-red-600 dark:text-red-400">
+            Missing required data for generation. Please go back to setup.
+          </div>
+        </div>
+      )
+    }
+
     const generateRequest: CurriculumGenerateRequest = {
-      topic: formData.topic!,
-      level: formData.level!,
-      durationDays: formData.durationDays!,
+      topic: formData.topic,
+      level: formData.level,
+      durationDays: formData.durationDays,
       batch: {
         startDay: 1,
-        endDay: Math.min(7, formData.durationDays!) // Start with first 7 days maximum
+        endDay: Math.min(7, formData.durationDays) // Start with first 7 days maximum
       },
-      outline: outline || undefined
+      outline: outline
     }
 
     return (
@@ -284,11 +298,17 @@ export default function CurriculumMode() {
             ← Back to Outline
           </button>
         </div>
-        <CurriculumStream 
-          request={generateRequest}
-          onComplete={handleStreamComplete}
-          onError={handleStreamError}
-        />
+        <ErrorBoundary 
+          onError={() => {
+            setStep('setup') // Reset to setup on error
+          }}
+        >
+          <CurriculumStream 
+            request={generateRequest}
+            onComplete={handleStreamComplete}
+            onError={handleStreamError}
+          />
+        </ErrorBoundary>
       </div>
     )
   }

@@ -35,26 +35,51 @@ export interface FetchNDJSONOptions extends Omit<RequestInit, 'body'> {
 export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions = {}): Promise<void> {
   const { onMessage, onError, onComplete, signal, ...fetchInit } = options
 
-  let response: Response
+  let response: Response | null = null
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  
+  // Cleanup function to prevent memory leaks
+  const cleanup = () => {
+    if (reader) {
+      try {
+        reader.releaseLock()
+      } catch {
+        // Ignore errors during cleanup
+      }
+      reader = null
+    }
+    if (response?.body) {
+      try {
+        response.body.cancel()
+      } catch {
+        // Ignore errors during cleanup
+      }
+    }
+    response = null
+  }
+
   try {
     response = await fetch(url, {
       ...fetchInit,
       signal
     })
   } catch (err) {
+    cleanup()
     const error = err instanceof Error ? err : new Error(String(err))
     onError?.(error)
     throw error
   }
 
   if (!response.ok) {
+    cleanup()
     const error = new Error(`Request failed with status ${response.status}`)
     onError?.(error)
     throw error
   }
 
-  const reader = response.body?.getReader()
+  reader = response.body?.getReader() || null
   if (!reader) {
+    cleanup()
     const error = new Error('No readable stream on response')
     onError?.(error)
     throw error
@@ -62,8 +87,9 @@ export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions
 
   const decoder = new TextDecoder()
   let buffer = ''
-  // SSE event accumulator: collect "data:" lines until a blank line, then join.
   let sseEventLines: string[] = []
+  const maxBufferSize = 256 * 1024 // 256KB limit
+  let totalBytesProcessed = 0
 
   const processPayload = (payload: string) => {
     const trimmed = payload.trim()
@@ -75,11 +101,10 @@ export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions
     try {
       const parsed = JSON.parse(trimmed)
       onMessage?.(parsed)
-    } catch (parseError) {
+    } catch {
       // Provide preview of the payload (not full to avoid leaking secrets)
       const preview = trimmed.length > 300 ? trimmed.slice(0, 300) + '...' : trimmed
       const err = new Error(`Failed to parse JSON: ${preview}`)
-      console.warn('NDJSON parse error', { preview, parseError })
       onError?.(err)
     }
   }
@@ -126,7 +151,7 @@ export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions
     while (true) {
       // Abort handling: if the caller's signal is aborted, cancel reading.
       if (signal?.aborted) {
-        try { await reader.cancel(); } catch (err) { void err }
+        cleanup()
         const err = new Error('Stream aborted')
         onError?.(err)
         throw err
@@ -135,8 +160,26 @@ export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions
       const { done, value } = await reader.read()
       if (done) break
 
+      // Track total bytes processed
+      totalBytesProcessed += value.byteLength
+      
+      // Prevent excessive memory usage
+      if (totalBytesProcessed > 10 * 1024 * 1024) { // 10MB limit
+        cleanup()
+        const err = new Error('Stream size limit exceeded')
+        onError?.(err)
+        throw err
+      }
+
       // Decode the chunk and append to buffer
       buffer += decoder.decode(value, { stream: true })
+
+      // Prevent buffer overflow
+      if (buffer.length > maxBufferSize) {
+        // Keep only the last portion to avoid losing data mid-JSON
+        buffer = buffer.slice(-maxBufferSize / 2)
+        sseEventLines = [] // Clear SSE accumulator
+      }
 
       // Split buffer into lines. Keep the last (possibly partial) piece in `buffer`.
       const parts = buffer.split(/\r?\n/)
@@ -174,7 +217,7 @@ export async function fetchNDJSONStream(url: string, options: FetchNDJSONOptions
     onError?.(err)
     throw err
   } finally {
-    try { await reader.releaseLock?.(); } catch (err) { void err }
+    cleanup()
   }
 }
 export function createSSEHeaders(origin?: string, allowedOrigin?: string) {
