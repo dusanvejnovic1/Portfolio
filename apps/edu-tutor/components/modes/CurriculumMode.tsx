@@ -8,7 +8,7 @@ import {
   CurriculumGenerateRequest,
   LearningLevel 
 } from '@/types/modes'
-import CurriculumStream from '@/components/CurriculumStream'
+import CurriculumBatchGenerator from '@/components/CurriculumBatchGenerator'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 export default function CurriculumMode() {
@@ -264,7 +264,7 @@ export default function CurriculumMode() {
   }
 
   if (step === 'generate') {
-    if (!formData.topic || !formData.level || !formData.durationDays || !outline) {
+    if (!formData.topic || !formData.level || !formData.durationDays) {
       return (
         <div className="max-w-4xl mx-auto p-6">
           <div className="text-center text-red-600 dark:text-red-400">
@@ -274,42 +274,28 @@ export default function CurriculumMode() {
       )
     }
 
-    const generateRequest: CurriculumGenerateRequest = {
+    const generateRequest = {
       topic: formData.topic,
-      level: formData.level,
+      level: formData.level as 'Beginner' | 'Intermediate' | 'Advanced',
       durationDays: formData.durationDays,
-      batch: {
-        startDay: 1,
-        endDay: Math.min(7, formData.durationDays) // Start with first 7 days maximum
-      },
-      outline: outline
+      goals: outline?.map(week => week.focus).filter(Boolean)
     }
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Generate Curriculum
-          </h2>
-          <button
-            onClick={() => setStep('outline')}
-            className="text-gray-600 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-          >
-            ← Back to Outline
-          </button>
-        </div>
-        <ErrorBoundary 
-          onError={() => {
-            setStep('setup') // Reset to setup on error
+      <ErrorBoundary 
+        onError={() => {
+          setStep('setup') // Reset to setup on error
+        }}
+      >
+        <CurriculumBatchGenerator 
+          request={generateRequest}
+          onComplete={handleStreamComplete}
+          onError={(error) => {
+            console.error('Curriculum generation failed:', error)
+            setStep('outline') // Go back to outline on error
           }}
-        >
-          <CurriculumStream 
-            request={generateRequest}
-            onComplete={handleStreamComplete}
-            onError={handleStreamError}
-          />
-        </ErrorBoundary>
-      </div>
+        />
+      </ErrorBoundary>
     )
   }
 

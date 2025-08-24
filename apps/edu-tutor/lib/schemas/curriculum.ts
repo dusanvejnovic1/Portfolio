@@ -26,6 +26,19 @@ export const CurriculumGenerateRequestSchema = z.object({
 export type CurriculumGenerateRequest = z.infer<typeof CurriculumGenerateRequestSchema>
 
 /**
+ * Schema for single day generation requests (non-streaming)
+ */
+export const CurriculumGenerateDayRequestSchema = z.object({
+  topic: z.string().min(3).max(200),
+  level: z.enum(['Beginner', 'Intermediate', 'Advanced']),
+  totalDays: z.number().min(1).max(180),
+  day: z.number().min(1).max(180),
+  goals: z.array(z.string()).optional()
+})
+
+export type CurriculumGenerateDayRequest = z.infer<typeof CurriculumGenerateDayRequestSchema>
+
+/**
  * Unified SSE Event schema that matches the actual data flow
  */
 export const CurriculumDaySchema = z.object({

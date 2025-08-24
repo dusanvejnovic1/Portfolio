@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { CurriculumGenerateRequestSchema, createErrorResponse } from '@/lib/schemas/curriculum'
-import { curriculumSystemPrompt, curriculumUserPrompt } from '@/lib/prompts/curriculum'
+import { curriculumSystemPrompt, curriculumUserPrompt, curriculumUserPromptForDays } from '@/lib/prompts/curriculum'
 import { client as openaiClient, resolveModel, isGpt5 } from '@/lib/openai'
 import { createStreamingChatCompletion } from '@/lib/llm'
 import { createStreamProcessor } from '@/lib/streaming/processor'
+import { partitionDays, runWithConcurrency, AbortControllerRegistry } from '@/lib/utils/batch'
 import type { CurriculumStreamEvent } from '@/types/modes'
 import crypto from 'crypto'
 
@@ -46,21 +47,20 @@ export async function POST(req: Request) {
       })
     }
 
-    // Build prompts
-    const system = curriculumSystemPrompt()
-    const user = curriculumUserPrompt(
-      requestData.topic, 
-      requestData.level, 
-      requestData.durationDays, 
-      requestData.goals
-    )
-
-    // Create streaming response
-    const encoder = new TextEncoder()
+    // Configuration for parallel generation
+    const batchSize = 2  // Generate 2 days per shard
+    const concurrency = 3  // Run up to 3 shards concurrently
     
+    // Build system prompt
+    const system = curriculumSystemPrompt()
+
+    // Create streaming response with parallel orchestrator
+    const encoder = new TextEncoder()
+
     const stream = new ReadableStream({
       async start(controller) {
         let isClosed = false
+        let stopAll = false
         
         const safeEnqueue = (data: Uint8Array) => {
           if (!isClosed) {
@@ -73,43 +73,133 @@ export async function POST(req: Request) {
           }
         }
 
+        // Shared state for deduplication and early stopping
+        const daysSeen = new Set<number>()
+        const controllerRegistry = new AbortControllerRegistry()
+        let collected = 0
+
+        const abortAllShards = () => {
+          stopAll = true
+          controllerRegistry.abortAll()
+        }
+
         try {
-          // Initialize stream processor
-          const processor = createStreamProcessor({
-            onEvent: (event: CurriculumStreamEvent) => {
-              const data = JSON.stringify(event) + '\n'
-              safeEnqueue(encoder.encode(data))
-            },
-            onError: (error: Error) => {
-              const errorEvent = {
-                type: 'error' as const,
-                error: error.message
+          // Partition days into shards for parallel processing
+          const shardBatches = partitionDays(requestData.durationDays, batchSize)
+          
+          // Send initial progress
+          const progressEvent = {
+            type: 'progress' as const,
+            value: `Starting parallel generation of ${requestData.durationDays} days across ${shardBatches.length} shards...`
+          }
+          safeEnqueue(encoder.encode(JSON.stringify(progressEvent) + '\n'))
+
+          // Create shard runners
+          const shardTasks = shardBatches.map((shardDays, shardIndex) => async () => {
+            if (stopAll) return
+            
+            const shardController = controllerRegistry.create()
+            
+            try {
+              // Create user prompt for this specific shard
+              const user = curriculumUserPromptForDays(
+                requestData.topic,
+                requestData.level,
+                shardDays,
+                requestData.durationDays,
+                requestData.goals
+              )
+
+              // Initialize processor for this shard
+              const processor = createStreamProcessor({
+                onEvent: (event: CurriculumStreamEvent) => {
+                  if (stopAll) return
+                  
+                  if (event.type === 'day') {
+                    const dayNum = event.day.day
+                    
+                    // Validate day number is within expected range
+                    if (dayNum < 1 || dayNum > requestData.durationDays) {
+                      return // Drop invalid day numbers
+                    }
+                    
+                    collected++
+                    
+                    // Check if we've collected enough days
+                    if (collected >= requestData.durationDays) {
+                      // Send final done event
+                      const doneEvent = {
+                        type: 'done' as const,
+                        totalGenerated: collected
+                      }
+                      safeEnqueue(encoder.encode(JSON.stringify(doneEvent) + '\n'))
+                      abortAllShards()
+                      return
+                    }
+                  }
+                  
+                  // Forward event to client
+                  const data = JSON.stringify(event) + '\n'
+                  safeEnqueue(encoder.encode(data))
+                },
+                onError: (error: Error) => {
+                  if (stopAll) return
+                  
+                  const errorEvent = {
+                    type: 'error' as const,
+                    error: `Shard ${shardIndex + 1} error: ${error.message}`
+                  }
+                  const data = JSON.stringify(errorEvent) + '\n'
+                  safeEnqueue(encoder.encode(data))
+                },
+                maxBufferSize: 128 * 1024,
+                daysSeenGlobal: daysSeen  // Shared deduplication
+              })
+
+              // Generate this shard
+              const resolvedModel = resolveModel()
+              
+              if (isGpt5(resolvedModel)) {
+                await streamWithResponsesAPI(system, user, resolvedModel, processor, shardController.signal)
+              } else {
+                await streamWithChatCompletions(system, user, processor, shardController.signal)
               }
-              const data = JSON.stringify(errorEvent) + '\n'
-              safeEnqueue(encoder.encode(data))
-            },
-            maxBufferSize: 128 * 1024 // 128KB buffer limit
+
+              // Don't flush individual shards - let the orchestrator handle completion
+              
+            } catch (error) {
+              if (!stopAll && !shardController.signal.aborted) {
+                const errorEvent = {
+                  type: 'error' as const,
+                  error: `Shard ${shardIndex + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+                }
+                safeEnqueue(encoder.encode(JSON.stringify(errorEvent) + '\n'))
+              }
+            } finally {
+              controllerRegistry.remove(shardController)
+            }
           })
 
-          // Start generation
-          const resolvedModel = resolveModel()
-          
-          if (isGpt5(resolvedModel)) {
-            await streamWithResponsesAPI(system, user, resolvedModel, processor)
-          } else {
-            await streamWithChatCompletions(system, user, processor)
-          }
+          // Run shards with concurrency control
+          await runWithConcurrency(shardTasks, concurrency)
 
-          // Flush any remaining content and close
-          processor.flush()
+          // Send final done event if not already sent
+          if (!stopAll) {
+            const doneEvent = {
+              type: 'done' as const,
+              totalGenerated: collected
+            }
+            safeEnqueue(encoder.encode(JSON.stringify(doneEvent) + '\n'))
+          }
           
         } catch (error) {
           const errorEvent = {
             type: 'error' as const,
-            error: error instanceof Error ? error.message : 'Unknown error occurred'
+            error: error instanceof Error ? error.message : 'Parallel generation failed'
           }
           safeEnqueue(encoder.encode(JSON.stringify(errorEvent) + '\n'))
         } finally {
+          abortAllShards()
           isClosed = true
           try {
             controller.close()
@@ -147,7 +237,8 @@ async function streamWithResponsesAPI(
   system: string,
   user: string,
   model: string,
-  processor: { processChunk: (chunk: string) => void }
+  processor: { processChunk: (chunk: string) => void },
+  signal?: AbortSignal
 ) {
   try {
     const client = openaiClient
@@ -155,6 +246,11 @@ async function streamWithResponsesAPI(
     const response = await client.responses.stream({ model, input: combinedInput })
 
     for await (const chunk of response) {
+      // Check for abort signal
+      if (signal?.aborted) {
+        break
+      }
+      
       try {
         const obj = chunk as Record<string, unknown>
         let content: string | null = null
@@ -183,7 +279,8 @@ async function streamWithResponsesAPI(
 async function streamWithChatCompletions(
   system: string,
   user: string,
-  processor: { processChunk: (chunk: string) => void }
+  processor: { processChunk: (chunk: string) => void },
+  signal?: AbortSignal
 ) {
   try {
     const messages = [
@@ -199,6 +296,11 @@ async function streamWithChatCompletions(
 
     if (Symbol.asyncIterator in Object(completion)) {
       for await (const chunk of completion as AsyncIterable<unknown>) {
+        // Check for abort signal
+        if (signal?.aborted) {
+          break
+        }
+        
         try {
           const obj = chunk as Record<string, unknown>
           const choices = obj.choices as unknown

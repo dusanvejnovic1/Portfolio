@@ -23,6 +23,7 @@ export interface StreamProcessorOptions {
   onEvent: (event: CurriculumStreamEvent) => void
   onError: (error: Error) => void
   maxBufferSize?: number
+  daysSeenGlobal?: Set<number>  // Optional shared set for deduplication across shards
 }
 
 /**
@@ -33,7 +34,7 @@ export interface StreamProcessorOptions {
  * 4. Handles errors gracefully with proper cleanup
  */
 export function createStreamProcessor(options: StreamProcessorOptions): StreamProcessor {
-  const { onEvent, onError, maxBufferSize = 64 * 1024 } = options
+  const { onEvent, onError, maxBufferSize = 64 * 1024, daysSeenGlobal } = options
   
   let buffer = ''
   const stats: StreamStats = {
@@ -58,6 +59,16 @@ export function createStreamProcessor(options: StreamProcessorOptions): StreamPr
         const dayEvent = event as { type: 'day'; day: CurriculumDay }
         if (!validateCurriculumDay(dayEvent.day)) {
           throw new Error(`Invalid day data: ${JSON.stringify(dayEvent.day)}`)
+        }
+        
+        // Check for duplicates using shared set if provided
+        if (daysSeenGlobal) {
+          const dayNum = dayEvent.day.day
+          if (daysSeenGlobal.has(dayNum)) {
+            // Drop duplicate day silently - this is expected in parallel generation
+            return
+          }
+          daysSeenGlobal.add(dayNum)
         }
       }
 

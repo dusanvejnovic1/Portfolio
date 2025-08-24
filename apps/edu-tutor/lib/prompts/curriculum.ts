@@ -57,3 +57,81 @@ CRITICAL: Respond ONLY with NDJSON events as specified in the system prompt. Do 
 
   return prompt
 }
+
+/**
+ * Creates a user prompt for generating specific days in a curriculum
+ * Used for parallel/batched generation to prevent duplicates and scope each shard
+ */
+export function curriculumUserPromptForDays(
+  topic: string,
+  level: 'Beginner' | 'Intermediate' | 'Advanced',
+  days: number[],
+  totalDays: number,
+  goals?: string[]
+): string {
+  const daysList = days.join(', ')
+  
+  let prompt = `Generate EXACTLY these days for the curriculum: [${daysList}] and NO OTHER DAYS.
+
+STRICT RULES:
+- Emit each requested day ONCE only. Never repeat a day number.
+- Do not emit any day not in [${daysList}].
+- Output strictly NDJSON day events only.
+
+Topic: ${topic}
+Level: ${level}
+Total curriculum length: ${totalDays} days
+Days to generate in this batch: ${daysList}`
+
+  if (goals && goals.length > 0) {
+    prompt += `\nOverall Learning Goals:\n${goals.map(goal => `- ${goal}`).join('\n')}`
+  }
+
+  prompt += `\n\nFor each day in [${daysList}], generate progressive content that builds on previous days and prepares for subsequent days in the full ${totalDays}-day curriculum.
+
+CRITICAL: 
+- Respond ONLY with NDJSON day events for days [${daysList}]
+- Do not include any explanatory text or markdown
+- Each day event must have day number from [${daysList}] only`
+
+  return prompt
+}
+
+/**
+ * Creates a user prompt for generating a single specific day in a curriculum
+ * Used for non-streaming individual day generation
+ */
+export function curriculumUserPromptForSingleDay(
+  topic: string,
+  level: 'Beginner' | 'Intermediate' | 'Advanced',
+  day: number,
+  totalDays: number,
+  goals?: string[]
+): string {
+  let prompt = `Generate EXACTLY Day ${day} for the curriculum and NO OTHER DAYS.
+
+STRICT RULES:
+- Generate only Day ${day} out of the total ${totalDays}-day curriculum
+- Do not generate any other day numbers
+- Return a single NDJSON day event or plain JSON day object
+- Keep fields concise but comprehensive
+
+Topic: ${topic}
+Level: ${level}
+Day to generate: ${day}
+Total curriculum length: ${totalDays} days`
+
+  if (goals && goals.length > 0) {
+    prompt += `\nOverall Learning Goals:\n${goals.map(goal => `- ${goal}`).join('\n')}`
+  }
+
+  prompt += `\n\nGenerate Day ${day} content that fits progressively within the full ${totalDays}-day curriculum. This day should build on previous days (1-${day-1}) and prepare for subsequent days (${day+1}-${totalDays}).
+
+CRITICAL: 
+- Respond with a single day event for Day ${day} only
+- Use either NDJSON format: {"type":"day","day":{...}} 
+- Or plain JSON format: {"day":${day},"title":"...","summary":"...",...}
+- Do not include any explanatory text or markdown`
+
+  return prompt
+}
